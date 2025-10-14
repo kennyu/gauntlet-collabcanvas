@@ -93,7 +93,7 @@
   - **Validation:** No TypeScript errors
 
 ### 1.4 Initial Deployment
-- [ ] **Task 1.4.1:** Deploy to Vercel
+- [x] **Task 1.4.1:** Deploy to Vercel
   - Connect GitHub repo to Vercel
   - Configure environment variables in Vercel
   - Deploy initial version
@@ -109,31 +109,31 @@
 ## Phase 2: Canvas Implementation (Hours 5-12)
 
 ### 2.1 Basic Canvas Setup (FR-2)
-- [ ] **Task 2.1.1:** Create Canvas component structure
+- [x] **Task 2.1.1:** Create Canvas component structure
   - Create `src/components/Canvas.tsx`
   - Set up Konva Stage and Layer
   - Configure canvas dimensions (3000x3000)
   - **Validation:** Blank canvas renders
 
-- [ ] **Task 2.1.2:** Implement grid background
+- [x] **Task 2.1.2:** Implement grid background
   - Create grid pattern with 50px squares
   - Use light gray color (#e5e7eb)
   - Render grid as Konva shapes or image
   - **Validation:** Grid visible on canvas
 
-- [ ] **Task 2.1.3:** Add pan functionality
+- [x] **Task 2.1.3:** Add pan functionality
   - Implement mouse drag to pan
   - Track mouse down/move/up events
   - Update stage position on drag
   - **Validation:** Can drag canvas smoothly
 
-- [ ] **Task 2.1.4:** Add zoom functionality
+- [x] **Task 2.1.4:** Add zoom functionality
   - Implement mouse wheel zoom
   - Zoom range: 0.1 (10%) to 5.0 (500%)
   - Center zoom on cursor position
   - **Validation:** Zoom in/out works, centers on cursor
 
-- [ ] **Task 2.1.5:** Implement boundary constraints
+- [x] **Task 2.1.5:** Implement boundary constraints
   - Calculate visible bounds based on zoom/pan
   - Prevent panning beyond canvas edges
   - Clamp pan position to valid range
@@ -581,7 +581,7 @@
 ### Core Features (Must Have All ✅):
 - [ ] Authentication with Google OAuth
 - [ ] Authentication with GitHub OAuth
-- [ ] Canvas with pan and zoom
+- [x] Canvas with pan and zoom
 - [ ] Rectangle creation
 - [ ] Rectangle movement
 - [ ] Real-time object synchronization
