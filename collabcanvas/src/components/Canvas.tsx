@@ -7,6 +7,7 @@ import { getRectangleColor, getNextColorIndex } from '../lib/colors'
 import { useRectangles } from '../hooks/useRectangles'
 import { createRectangle as dbCreateRectangle, loadRectangles, updateRectangle as dbUpdateRectangle } from '../lib/database'
 import { supabase } from '../lib/supabase'
+import type { RealtimeChannel } from '@supabase/supabase-js'
 
 const CANVAS_WIDTH = 3000
 const CANVAS_HEIGHT = 3000
@@ -42,7 +43,7 @@ export default function Canvas() {
 
   // Realtime: INSERT and UPDATE
   useEffect(() => {
-    const channel = supabase
+    const channel: RealtimeChannel = supabase
       .channel('canvas-objects-rt')
       .on(
         'postgres_changes',
@@ -63,12 +64,33 @@ export default function Canvas() {
           upsertRectangle({ id: r.id, x: r.x, y: r.y, width: r.width, height: r.height, color: r.color })
         },
       )
-      .subscribe()
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          // no-op; connected
+        }
+        if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          // Channel will attempt reconnect; we also refresh data on network restore (see online handler)
+        }
+      })
 
     return () => {
       supabase.removeChannel(channel)
     }
   }, [upsertRectangle])
+
+  // Reconnection: on browser online, reload state to reconcile
+  useEffect(() => {
+    const handleOnline = async () => {
+      try {
+        const items = await loadRectangles()
+        hydrateRectangles(items)
+      } catch (e) {
+        console.error('Failed to reload rectangles after reconnect', e)
+      }
+    }
+    window.addEventListener('online', handleOnline)
+    return () => window.removeEventListener('online', handleOnline)
+  }, [hydrateRectangles])
 
   // debounce map per-rectangle
   const pendingUpdateTimers = useRef<Record<string, number>>({})
