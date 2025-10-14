@@ -33,6 +33,8 @@ export default function Canvas() {
   
   const { rectangles, selectedId, hydrateRectangles, addRectangle, replaceRectangleId, updateRectangle, selectRectangle, upsertRectangle } = useRectangles()
 
+  const log = (...args: unknown[]) => console.log('[Canvas]', ...args)
+
   // Load initial rectangles from DB
   useEffect(() => {
     ;(async () => {
@@ -301,6 +303,8 @@ export default function Canvas() {
       y: clamp(newPos.y, boundsAtNewScale.minY, boundsAtNewScale.maxY),
     }
 
+    log('wheel zoom', { oldScale, newScale, pointer, mousePointTo, newPos, clampedPos })
+
     setScale(newScale)
     setStagePos(clampedPos)
   }
@@ -324,8 +328,18 @@ export default function Canvas() {
 
     const color = getRectangleColor(currentColorIndex)
     setCurrentColorIndex((idx) => getNextColorIndex(idx))
+    log('background click → create rectangle request', {
+      pointer,
+      raw: { x: rawX, y: rawY },
+      clamped: { x, y },
+      size: { width, height },
+      color,
+      scale,
+      stagePos,
+    })
 
     const tempId = addRectangle({ x, y, width, height, color })
+    log('optimistic rectangle added', { tempId })
     // Persist to DB and reconcile ID
     try {
       const { supabase } = await import('../lib/supabase')
@@ -333,6 +347,7 @@ export default function Canvas() {
       const userId = data.session?.user.id || ''
       const realId = await dbCreateRectangle({ x, y, width, height, color }, userId)
       replaceRectangleId(tempId, realId)
+      log('rectangle persisted', { tempId, realId, userId })
     } catch (err) {
       console.error('Failed to create rectangle in DB', err)
     }
@@ -351,6 +366,7 @@ export default function Canvas() {
 
     const clampedX = clamp(pos.x, minX, maxX)
     const clampedY = clamp(pos.y, minY, maxY)
+    log('dragBound', { requested: pos, clamped: { x: clampedX, y: clampedY }, size: { width, height } })
     return { x: clampedX, y: clampedY }
   }
 
@@ -364,11 +380,13 @@ export default function Canvas() {
     const timer = window.setTimeout(async () => {
       try {
         await dbUpdateRectangle(id, { x: newPos.x, y: newPos.y })
+        log('rectangle position persisted (debounced)', { id, x: newPos.x, y: newPos.y })
       } catch (err) {
         console.error('Failed to update rectangle in DB', err)
       }
     }, 150)
     pendingUpdateTimers.current[id] = timer
+    log('rectangle drag move', { id, x: newPos.x, y: newPos.y, scheduledPersistInMs: 150 })
   }
 
   const handleRectDragEnd = (id: string) => (e: KonvaEventObject<DragEvent>) => {
@@ -383,10 +401,12 @@ export default function Canvas() {
     ;(async () => {
       try {
         await dbUpdateRectangle(id, { x: newPos.x, y: newPos.y })
+        log('rectangle drag end persisted (flush)', { id, x: newPos.x, y: newPos.y })
       } catch (err) {
         console.error('Failed to persist drag end update', err)
       }
     })()
+    log('rectangle drag end', { id, x: newPos.x, y: newPos.y })
   }
 
   return (
@@ -406,6 +426,7 @@ export default function Canvas() {
         onDragMove={(e) => {
           const p = e.target.position()
           setStagePos({ x: p.x, y: p.y })
+          log('stage drag move', { stagePos: { x: p.x, y: p.y } })
         }}
         onWheel={handleWheel}
       >
@@ -453,21 +474,28 @@ export default function Canvas() {
               onMouseDown={(e) => {
                 e.cancelBubble = true
                 setIsDraggingRect(true)
+                log('rectangle mouse down', { id: r.id, at: { x: r.x, y: r.y } })
               }}
               onMouseUp={(e) => {
                 e.cancelBubble = true
                 setIsDraggingRect(false)
+                log('rectangle mouse up', { id: r.id })
               }}
               onDragStart={(e) => {
                 e.cancelBubble = true
                 setIsDraggingRect(true)
+                const p = e.target.position()
+                log('rectangle drag start', { id: r.id, startPos: { x: p.x, y: p.y }, scale, stagePos })
               }}
               onDragMove={handleRectDragMove(r.id)}
               onDragEnd={(e) => {
                 setIsDraggingRect(false)
                 handleRectDragEnd(r.id)(e)
               }}
-              onClick={() => handleRectClick(r.id)}
+              onClick={() => {
+                log('rectangle clicked → select', { id: r.id })
+                handleRectClick(r.id)
+              }}
             />
           ))}
         </Layer>
