@@ -3,22 +3,15 @@ import { useMemo, useState } from 'react'
 import type { ReactElement } from 'react'
 import type { KonvaEventObject } from 'konva/lib/Node'
 import Rectangle from './Rectangle'
+import { getRectangleColor, getNextColorIndex } from '../lib/colors'
+import { useRectangles } from '../hooks/useRectangles'
 
 const CANVAS_WIDTH = 3000
 const CANVAS_HEIGHT = 3000
 const GRID_SIZE = 50
 const MIN_RECT_SIZE = 20
 const DEFAULT_RECT_SIZE = 100
-import { getRectangleColor, getNextColorIndex } from '../lib/colors'
 
-type RectState = {
-  id: string
-  x: number
-  y: number
-  width: number
-  height: number
-  color: string
-}
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value))
@@ -28,10 +21,10 @@ export default function Canvas() {
   const [stageSize] = useState(() => ({ width: window.innerWidth, height: window.innerHeight }))
   const [scale, setScale] = useState(1)
   const [stagePos, setStagePos] = useState({ x: 0, y: 0 })
-  const [rectangles, setRectangles] = useState<RectState[]>([])
   const [currentColorIndex, setCurrentColorIndex] = useState(0)
-  const [selectedId, setSelectedId] = useState<string | null>(null)
   const [isDraggingRect, setIsDraggingRect] = useState(false)
+  
+  const { rectangles, selectedId, addRectangle, updateRectangle, selectRectangle } = useRectangles()
 
   // Fixed virtual canvas size; Stage will be viewport-sized, content is 3000x3000
   const layerSize = useMemo(() => ({ width: CANVAS_WIDTH, height: CANVAS_HEIGHT }), [])
@@ -153,13 +146,11 @@ export default function Canvas() {
     const color = getRectangleColor(currentColorIndex)
     setCurrentColorIndex((idx) => getNextColorIndex(idx))
 
-    const id = `r-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-    setRectangles((prev) => [...prev, { id, x, y, width, height, color }])
-    setSelectedId(id)
+    addRectangle({ x, y, width, height, color })
   }
 
   const handleRectClick = (id: string) => {
-    setSelectedId(id)
+    selectRectangle(id)
   }
 
   const dragBoundWithinCanvas = (width: number, height: number) => (pos: { x: number; y: number }) => {
@@ -174,16 +165,16 @@ export default function Canvas() {
     return { x: clampedX, y: clampedY }
   }
 
-  const handleRectDragMove = (id: string, width: number, height: number) => (e: KonvaEventObject<DragEvent>) => {
+  const handleRectDragMove = (id: string) => (e: KonvaEventObject<DragEvent>) => {
     const node = e.target
     const newPos = node.position()
-    setRectangles((prev) => prev.map((r) => (r.id === id ? { ...r, x: newPos.x, y: newPos.y, width, height } : r)))
+    updateRectangle(id, { x: newPos.x, y: newPos.y })
   }
 
   const handleRectDragEnd = (id: string) => (e: KonvaEventObject<DragEvent>) => {
     const node = e.target
     const newPos = node.position()
-    setRectangles((prev) => prev.map((r) => (r.id === id ? { ...r, x: newPos.x, y: newPos.y } : r)))
+    updateRectangle(id, { x: newPos.x, y: newPos.y })
   }
 
   return (
@@ -215,7 +206,7 @@ export default function Canvas() {
             height={layerSize.height}
             fill={'#000'}
             opacity={0}
-            onClick={handleBackgroundClick}
+             onClick={handleBackgroundClick}
           />
           <Group listening={false}>{gridLines}</Group>
           {/* Debug visuals: canvas bounds and viewport info */}
@@ -259,7 +250,7 @@ export default function Canvas() {
                 e.cancelBubble = true
                 setIsDraggingRect(true)
               }}
-              onDragMove={handleRectDragMove(r.id, r.width, r.height)}
+              onDragMove={handleRectDragMove(r.id)}
               onDragEnd={(e) => {
                 setIsDraggingRect(false)
                 handleRectDragEnd(r.id)(e)

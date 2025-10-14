@@ -165,37 +165,37 @@
   - **Validation:** Cannot create rectangle < 20x20px
 
 ### 2.3 Selection & Movement (FR-4)
-- [ ] **Task 2.3.1:** Implement rectangle selection
+- [x] **Task 2.3.1:** Implement rectangle selection
   - Add onClick handler to rectangles
   - Track selected rectangle ID in state
   - Render 2px blue border on selected rectangle
   - **Validation:** Clicking rectangle shows selection border
 
-- [ ] **Task 2.3.2:** Implement deselection
+- [x] **Task 2.3.2:** Implement deselection
   - Add onClick handler to canvas background
   - Clear selected ID on background click
   - **Validation:** Clicking empty space deselects
 
-- [ ] **Task 2.3.3:** Implement drag movement
+- [x] **Task 2.3.3:** Implement drag movement
   - Enable draggable on Konva Rect
   - Track drag position updates
   - Update rectangle state on drag
   - **Validation:** Can drag rectangles smoothly
 
-- [ ] **Task 2.3.4:** Add movement boundary constraints
+- [x] **Task 2.3.4:** Add movement boundary constraints
   - Calculate rectangle bounds during drag
   - Prevent rectangle center from leaving canvas
   - Clamp position to valid range
   - **Validation:** Rectangle stays within canvas bounds
 
 ### 2.4 Local State Management
-- [ ] **Task 2.4.1:** Create state management structure
+- [x] **Task 2.4.1:** Create state management structure
   - Define Rectangle interface/type
   - Create rectangles state array
   - Implement add/update/select operations
   - **Validation:** State updates trigger re-renders
 
-- [ ] **Task 2.4.2:** Implement optimistic updates
+- [x] **Task 2.4.2:** Implement optimistic updates
   - Update local state immediately on actions
   - Don't wait for database confirmation
   - **Validation:** Actions feel instant, no lag
@@ -583,7 +583,7 @@
 - [ ] Authentication with GitHub OAuth
 - [x] Canvas with pan and zoom
 - [x] Rectangle creation
-- [ ] Rectangle movement
+- [x] Rectangle movement
 - [ ] Real-time object synchronization
 - [ ] Multiplayer cursors
 - [ ] Presence awareness panel
