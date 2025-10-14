@@ -13,12 +13,22 @@ export function useRectangles() {
   const [rectangles, setRectangles] = useState<RectangleState[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
+  const hydrateRectangles = useCallback((items: RectangleState[]) => {
+    setRectangles(items)
+    setSelectedId(null)
+  }, [])
+
   const addRectangle = useCallback((rect: Omit<RectangleState, 'id'>) => {
     const id = `r-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
     const newRect = { ...rect, id }
     setRectangles(prev => [...prev, newRect])
     setSelectedId(id)
     return id
+  }, [])
+
+  const replaceRectangleId = useCallback((tempId: string, realId: string) => {
+    setRectangles(prev => prev.map(r => (r.id === tempId ? { ...r, id: realId } : r)))
+    setSelectedId(prev => (prev === tempId ? realId : prev))
   }, [])
 
   const updateRectangle = useCallback((id: string, updates: Partial<Omit<RectangleState, 'id'>>) => {
@@ -36,7 +46,9 @@ export function useRectangles() {
   return {
     rectangles,
     selectedId,
+    hydrateRectangles,
     addRectangle,
+    replaceRectangleId,
     updateRectangle,
     selectRectangle,
     getSelectedRectangle,

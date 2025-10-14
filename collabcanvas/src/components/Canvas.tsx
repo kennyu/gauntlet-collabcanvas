@@ -1,10 +1,11 @@
 import { Stage, Layer, Line, Group, Rect, Text } from 'react-konva'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
 import type { KonvaEventObject } from 'konva/lib/Node'
 import Rectangle from './Rectangle'
 import { getRectangleColor, getNextColorIndex } from '../lib/colors'
 import { useRectangles } from '../hooks/useRectangles'
+import { createRectangle as dbCreateRectangle, loadRectangles, updateRectangle as dbUpdateRectangle } from '../lib/database'
 
 const CANVAS_WIDTH = 3000
 const CANVAS_HEIGHT = 3000
@@ -24,7 +25,22 @@ export default function Canvas() {
   const [currentColorIndex, setCurrentColorIndex] = useState(0)
   const [isDraggingRect, setIsDraggingRect] = useState(false)
   
-  const { rectangles, selectedId, addRectangle, updateRectangle, selectRectangle } = useRectangles()
+  const { rectangles, selectedId, hydrateRectangles, addRectangle, replaceRectangleId, updateRectangle, selectRectangle } = useRectangles()
+
+  // Load initial rectangles from DB
+  useEffect(() => {
+    ;(async () => {
+      try {
+        const items = await loadRectangles()
+        hydrateRectangles(items)
+      } catch (e) {
+        console.error('Failed to load rectangles', e)
+      }
+    })()
+  }, [hydrateRectangles])
+
+  // debounce map per-rectangle
+  const pendingUpdateTimers = useRef<Record<string, number>>({})
 
   // Fixed virtual canvas size; Stage will be viewport-sized, content is 3000x3000
   const layerSize = useMemo(() => ({ width: CANVAS_WIDTH, height: CANVAS_HEIGHT }), [])
@@ -126,7 +142,7 @@ export default function Canvas() {
     setStagePos(clampedPos)
   }
 
-  const handleBackgroundClick = (e: KonvaEventObject<MouseEvent>) => {
+  const handleBackgroundClick = async (e: KonvaEventObject<MouseEvent>) => {
     const stage = e.target.getStage()
     if (!stage) return
 
@@ -146,7 +162,17 @@ export default function Canvas() {
     const color = getRectangleColor(currentColorIndex)
     setCurrentColorIndex((idx) => getNextColorIndex(idx))
 
-    addRectangle({ x, y, width, height, color })
+    const tempId = addRectangle({ x, y, width, height, color })
+    // Persist to DB and reconcile ID
+    try {
+      const { supabase } = await import('../lib/supabase')
+      const { data } = await supabase.auth.getSession()
+      const userId = data.session?.user.id || ''
+      const realId = await dbCreateRectangle({ x, y, width, height, color }, userId)
+      replaceRectangleId(tempId, realId)
+    } catch (err) {
+      console.error('Failed to create rectangle in DB', err)
+    }
   }
 
   const handleRectClick = (id: string) => {
@@ -169,12 +195,35 @@ export default function Canvas() {
     const node = e.target
     const newPos = node.position()
     updateRectangle(id, { x: newPos.x, y: newPos.y })
+    // debounce DB update
+    const handle = pendingUpdateTimers.current[id]
+    if (handle) window.clearTimeout(handle)
+    const timer = window.setTimeout(async () => {
+      try {
+        await dbUpdateRectangle(id, { x: newPos.x, y: newPos.y })
+      } catch (err) {
+        console.error('Failed to update rectangle in DB', err)
+      }
+    }, 150)
+    pendingUpdateTimers.current[id] = timer
   }
 
   const handleRectDragEnd = (id: string) => (e: KonvaEventObject<DragEvent>) => {
     const node = e.target
     const newPos = node.position()
     updateRectangle(id, { x: newPos.x, y: newPos.y })
+    // flush any pending debounce to ensure final position persists
+    const handle = pendingUpdateTimers.current[id]
+    if (handle) {
+      window.clearTimeout(handle)
+    }
+    ;(async () => {
+      try {
+        await dbUpdateRectangle(id, { x: newPos.x, y: newPos.y })
+      } catch (err) {
+        console.error('Failed to persist drag end update', err)
+      }
+    })()
   }
 
   return (
