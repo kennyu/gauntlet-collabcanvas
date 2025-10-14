@@ -253,13 +253,13 @@
   - **Validation:** Existing rectangles load on page refresh
 
 ### 3.3 Real-Time Synchronization (FR-5)
-- [ ] **Task 3.3.1:** Subscribe to INSERT events
+- [x] **Task 3.3.1:** Subscribe to INSERT events
   - Set up Supabase Realtime subscription
   - Listen for INSERT on `canvas_objects`
   - Add new rectangles to local state
   - **Validation:** User A creates, User B sees new rectangle
 
-- [ ] **Task 3.3.2:** Subscribe to UPDATE events
+- [x] **Task 3.3.2:** Subscribe to UPDATE events
   - Listen for UPDATE on `canvas_objects`
   - Update matching rectangle in local state
   - **Validation:** User A moves, User B sees movement
