@@ -1,11 +1,8 @@
 import { Stage, Layer, Line, Group, Rect, Text } from 'react-konva'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { ReactElement } from 'react'
 import type { KonvaEventObject } from 'konva/lib/Node'
-import Rectangle from './Rectangle'
-import { getRectangleColor, getNextColorIndex, getColorForUserId } from '../lib/colors'
-import { useRectangles } from '../hooks/useRectangles'
-import { createRectangle as dbCreateRectangle, loadRectangles, updateRectangle as dbUpdateRectangle } from '../lib/database'
+import { getColorForUserId } from '../lib/colors'
 import { supabase } from '../lib/supabase'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import Cursor from './Cursor'
@@ -14,8 +11,7 @@ import PresencePanel from './PresencePanel'
 const CANVAS_WIDTH = 3000
 const CANVAS_HEIGHT = 3000
 const GRID_SIZE = 50
-const MIN_RECT_SIZE = 20
-const DEFAULT_RECT_SIZE = 100
+// rectangles removed; keep canvas bounds and grid only
 
 
 function clamp(value: number, min: number, max: number) {
@@ -26,77 +22,17 @@ export default function Canvas() {
   const [stageSize] = useState(() => ({ width: window.innerWidth, height: window.innerHeight }))
   const [scale, setScale] = useState(1)
   const [stagePos, setStagePos] = useState({ x: 0, y: 0 })
-  const [currentColorIndex, setCurrentColorIndex] = useState(0)
-  const [isDraggingRect, setIsDraggingRect] = useState(false)
+  const [isPanning, setIsPanning] = useState(false)
   const [remoteCursors, setRemoteCursors] = useState<Record<string, { x: number; y: number; color: string; label: string; ts: number }>>({})
   const [onlineUsers, setOnlineUsers] = useState<Record<string, { label: string; color: string }>>({})
   
-  const { rectangles, selectedId, hydrateRectangles, addRectangle, replaceRectangleId, updateRectangle, selectRectangle, upsertRectangle } = useRectangles()
-
   const log = (...args: unknown[]) => console.log('[Canvas]', ...args)
 
-  // Load initial rectangles from DB
-  useEffect(() => {
-    ;(async () => {
-      try {
-        const items = await loadRectangles()
-        hydrateRectangles(items)
-      } catch (e) {
-        console.error('Failed to load rectangles', e)
-      }
-    })()
-  }, [hydrateRectangles])
+  // rectangles removed: no initial load
 
-  // Realtime: INSERT and UPDATE
-  useEffect(() => {
-    const channel: RealtimeChannel = supabase
-      .channel('canvas-objects-rt')
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'canvas_objects' },
-        (payload: any) => {
-          const r = payload.new
-          if (r.type !== 'rectangle') return
-          upsertRectangle({ id: r.id, x: r.x, y: r.y, width: r.width, height: r.height, color: r.color })
-        },
-      )
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'canvas_objects' },
-        (payload: any) => {
-          const r = payload.new
-          if (r.type !== 'rectangle') return
-          // last-write-wins - simply apply incoming
-          upsertRectangle({ id: r.id, x: r.x, y: r.y, width: r.width, height: r.height, color: r.color })
-        },
-      )
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          // no-op; connected
-        }
-        if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          // Channel will attempt reconnect; we also refresh data on network restore (see online handler)
-        }
-      })
+  // rectangles removed: no realtime object updates
 
-    return () => {
-      supabase.removeChannel(channel)
-    }
-  }, [upsertRectangle])
-
-  // Reconnection: on browser online, reload state to reconcile
-  useEffect(() => {
-    const handleOnline = async () => {
-      try {
-        const items = await loadRectangles()
-        hydrateRectangles(items)
-      } catch (e) {
-        console.error('Failed to reload rectangles after reconnect', e)
-      }
-    }
-    window.addEventListener('online', handleOnline)
-    return () => window.removeEventListener('online', handleOnline)
-  }, [hydrateRectangles])
+  // rectangles removed: no reload on online
 
   // Presence channel
   useEffect(() => {
@@ -134,8 +70,7 @@ export default function Canvas() {
     }
   }, [])
 
-  // debounce map per-rectangle
-  const pendingUpdateTimers = useRef<Record<string, number>>({})
+  // rectangles removed: no debounced updates
 
   // Fixed virtual canvas size; Stage will be viewport-sized, content is 3000x3000
   const layerSize = useMemo(() => ({ width: CANVAS_WIDTH, height: CANVAS_HEIGHT }), [])
@@ -309,105 +244,15 @@ export default function Canvas() {
     setStagePos(clampedPos)
   }
 
-  const handleBackgroundClick = async (e: KonvaEventObject<MouseEvent>) => {
-    const stage = e.target.getStage()
-    if (!stage) return
+  // rectangles removed: no background click create
 
-    const pointer = stage.getPointerPosition()
-    if (!pointer) return
+  // rectangles removed
 
-    const rawX = (pointer.x - stagePos.x) / scale
-    const rawY = (pointer.y - stagePos.y) / scale
+  // rectangles removed
 
-    const width = Math.max(DEFAULT_RECT_SIZE, MIN_RECT_SIZE)
-    const height = Math.max(DEFAULT_RECT_SIZE, MIN_RECT_SIZE)
+  // rectangles removed
 
-    // Clamp position so rectangle stays fully within canvas
-    const x = clamp(rawX, 0, CANVAS_WIDTH - width)
-    const y = clamp(rawY, 0, CANVAS_HEIGHT - height)
-
-    const color = getRectangleColor(currentColorIndex)
-    setCurrentColorIndex((idx) => getNextColorIndex(idx))
-    log('background click → create rectangle request', {
-      pointer,
-      raw: { x: rawX, y: rawY },
-      clamped: { x, y },
-      size: { width, height },
-      color,
-      scale,
-      stagePos,
-    })
-
-    const tempId = addRectangle({ x, y, width, height, color })
-    log('optimistic rectangle added', { tempId })
-    // Persist to DB and reconcile ID
-    try {
-      const { supabase } = await import('../lib/supabase')
-      const { data } = await supabase.auth.getSession()
-      const userId = data.session?.user.id || ''
-      const realId = await dbCreateRectangle({ x, y, width, height, color }, userId)
-      replaceRectangleId(tempId, realId)
-      log('rectangle persisted', { tempId, realId, userId })
-    } catch (err) {
-      console.error('Failed to create rectangle in DB', err)
-    }
-  }
-
-  const handleRectClick = (id: string) => {
-    selectRectangle(id)
-  }
-
-  const dragBoundWithinCanvas = (width: number, height: number) => (pos: { x: number; y: number }) => {
-    // constrain so rectangle's top-left stays within canvas bounds
-    const minX = 0
-    const maxX = CANVAS_WIDTH - Math.max(20, width)
-    const minY = 0
-    const maxY = CANVAS_HEIGHT - Math.max(20, height)
-
-    const clampedX = clamp(pos.x, minX, maxX)
-    const clampedY = clamp(pos.y, minY, maxY)
-    log('dragBound', { requested: pos, clamped: { x: clampedX, y: clampedY }, size: { width, height } })
-    return { x: clampedX, y: clampedY }
-  }
-
-  const handleRectDragMove = (id: string) => (e: KonvaEventObject<DragEvent>) => {
-    const node = e.target
-    const newPos = node.position()
-    updateRectangle(id, { x: newPos.x, y: newPos.y })
-    // debounce DB update
-    const handle = pendingUpdateTimers.current[id]
-    if (handle) window.clearTimeout(handle)
-    const timer = window.setTimeout(async () => {
-      try {
-        await dbUpdateRectangle(id, { x: newPos.x, y: newPos.y })
-        log('rectangle position persisted (debounced)', { id, x: newPos.x, y: newPos.y })
-      } catch (err) {
-        console.error('Failed to update rectangle in DB', err)
-      }
-    }, 150)
-    pendingUpdateTimers.current[id] = timer
-    log('rectangle drag move', { id, x: newPos.x, y: newPos.y, scheduledPersistInMs: 150 })
-  }
-
-  const handleRectDragEnd = (id: string) => (e: KonvaEventObject<DragEvent>) => {
-    const node = e.target
-    const newPos = node.position()
-    updateRectangle(id, { x: newPos.x, y: newPos.y })
-    // flush any pending debounce to ensure final position persists
-    const handle = pendingUpdateTimers.current[id]
-    if (handle) {
-      window.clearTimeout(handle)
-    }
-    ;(async () => {
-      try {
-        await dbUpdateRectangle(id, { x: newPos.x, y: newPos.y })
-        log('rectangle drag end persisted (flush)', { id, x: newPos.x, y: newPos.y })
-      } catch (err) {
-        console.error('Failed to persist drag end update', err)
-      }
-    })()
-    log('rectangle drag end', { id, x: newPos.x, y: newPos.y })
-  }
+  // rectangles removed
 
   return (
     <div style={{ width: '100vw', height: '100vh', position: 'relative' }}>
@@ -418,7 +263,8 @@ export default function Canvas() {
         y={stagePos.y}
         scaleX={scale}
         scaleY={scale}
-        draggable={!isDraggingRect && (hasHorizontalOverflow || hasVerticalOverflow)}
+        dragDistance={3}
+        draggable={isPanning && (hasHorizontalOverflow || hasVerticalOverflow)}
         dragBoundFunc={(pos) => ({
           x: clamp(pos.x, minX, maxX),
           y: clamp(pos.y, minY, maxY),
@@ -429,6 +275,7 @@ export default function Canvas() {
           log('stage drag move', { stagePos: { x: p.x, y: p.y } })
         }}
         onWheel={handleWheel}
+        onMouseUp={() => setIsPanning(false)}
       >
         <Layer width={layerSize.width} height={layerSize.height}>
           {/* Background rect to capture clicks on empty canvas */}
@@ -439,7 +286,15 @@ export default function Canvas() {
             height={layerSize.height}
             fill={'#000'}
             opacity={0}
-             onClick={handleBackgroundClick}
+            onMouseDown={() => {
+              setIsPanning(true)
+              log('background mousedown → start panning')
+            }}
+            onMouseUp={() => {
+              setIsPanning(false)
+              log('background mouseup → stop panning')
+            }}
+            // rectangles removed - click does nothing now
           />
           <Group listening={false}>{gridLines}</Group>
           {/* Debug visuals: canvas bounds and viewport info */}
@@ -460,44 +315,7 @@ export default function Canvas() {
             fill="#64748b"
             listening={false}
           />
-          {rectangles.map((r) => (
-            <Rectangle
-              key={r.id}
-              x={r.x}
-              y={r.y}
-              width={r.width}
-              height={r.height}
-              color={r.color}
-              selected={selectedId === r.id}
-              draggable
-              dragBoundFunc={dragBoundWithinCanvas(r.width, r.height)}
-              onMouseDown={(e) => {
-                e.cancelBubble = true
-                setIsDraggingRect(true)
-                log('rectangle mouse down', { id: r.id, at: { x: r.x, y: r.y } })
-              }}
-              onMouseUp={(e) => {
-                e.cancelBubble = true
-                setIsDraggingRect(false)
-                log('rectangle mouse up', { id: r.id })
-              }}
-              onDragStart={(e) => {
-                e.cancelBubble = true
-                setIsDraggingRect(true)
-                const p = e.target.position()
-                log('rectangle drag start', { id: r.id, startPos: { x: p.x, y: p.y }, scale, stagePos })
-              }}
-              onDragMove={handleRectDragMove(r.id)}
-              onDragEnd={(e) => {
-                setIsDraggingRect(false)
-                handleRectDragEnd(r.id)(e)
-              }}
-              onClick={() => {
-                log('rectangle clicked → select', { id: r.id })
-                handleRectClick(r.id)
-              }}
-            />
-          ))}
+          {/* rectangles removed */}
         </Layer>
       </Stage>
       {/* Remote Cursors overlay */}
