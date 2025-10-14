@@ -1,4 +1,4 @@
-import { Stage, Layer, Line, Group, Rect } from 'react-konva'
+import { Stage, Layer, Line, Group, Rect, Text } from 'react-konva'
 import { useMemo, useState } from 'react'
 import type { ReactElement } from 'react'
 import type { KonvaEventObject } from 'konva/lib/Node'
@@ -30,6 +30,8 @@ export default function Canvas() {
   const [stagePos, setStagePos] = useState({ x: 0, y: 0 })
   const [rectangles, setRectangles] = useState<RectState[]>([])
   const [currentColorIndex, setCurrentColorIndex] = useState(0)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [isDraggingRect, setIsDraggingRect] = useState(false)
 
   // Fixed virtual canvas size; Stage will be viewport-sized, content is 3000x3000
   const layerSize = useMemo(() => ({ width: CANVAS_WIDTH, height: CANVAS_HEIGHT }), [])
@@ -153,6 +155,35 @@ export default function Canvas() {
 
     const id = `r-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
     setRectangles((prev) => [...prev, { id, x, y, width, height, color }])
+    setSelectedId(id)
+  }
+
+  const handleRectClick = (id: string) => {
+    setSelectedId(id)
+  }
+
+  const dragBoundWithinCanvas = (width: number, height: number) => (pos: { x: number; y: number }) => {
+    // constrain so rectangle's top-left stays within canvas bounds
+    const minX = 0
+    const maxX = CANVAS_WIDTH - Math.max(20, width)
+    const minY = 0
+    const maxY = CANVAS_HEIGHT - Math.max(20, height)
+
+    const clampedX = clamp(pos.x, minX, maxX)
+    const clampedY = clamp(pos.y, minY, maxY)
+    return { x: clampedX, y: clampedY }
+  }
+
+  const handleRectDragMove = (id: string, width: number, height: number) => (e: KonvaEventObject<DragEvent>) => {
+    const node = e.target
+    const newPos = node.position()
+    setRectangles((prev) => prev.map((r) => (r.id === id ? { ...r, x: newPos.x, y: newPos.y, width, height } : r)))
+  }
+
+  const handleRectDragEnd = (id: string) => (e: KonvaEventObject<DragEvent>) => {
+    const node = e.target
+    const newPos = node.position()
+    setRectangles((prev) => prev.map((r) => (r.id === id ? { ...r, x: newPos.x, y: newPos.y } : r)))
   }
 
   return (
@@ -164,7 +195,7 @@ export default function Canvas() {
         y={stagePos.y}
         scaleX={scale}
         scaleY={scale}
-        draggable={hasHorizontalOverflow || hasVerticalOverflow}
+        draggable={!isDraggingRect && (hasHorizontalOverflow || hasVerticalOverflow)}
         dragBoundFunc={(pos) => ({
           x: clamp(pos.x, minX, maxX),
           y: clamp(pos.y, minY, maxY),
@@ -187,13 +218,60 @@ export default function Canvas() {
             onClick={handleBackgroundClick}
           />
           <Group listening={false}>{gridLines}</Group>
+          {/* Debug visuals: canvas bounds and viewport info */}
+          <Rect
+            x={0}
+            y={0}
+            width={CANVAS_WIDTH}
+            height={CANVAS_HEIGHT}
+            stroke="#94a3b8"
+            strokeWidth={1}
+            listening={false}
+          />
+          <Text
+            x={8}
+            y={8}
+            text={`scale: ${scale.toFixed(2)} | stage: (${stagePos.x.toFixed(0)}, ${stagePos.y.toFixed(0)})`}
+            fontSize={14}
+            fill="#64748b"
+            listening={false}
+          />
           {rectangles.map((r) => (
-            <Rectangle key={r.id} x={r.x} y={r.y} width={r.width} height={r.height} color={r.color} />
+            <Rectangle
+              key={r.id}
+              x={r.x}
+              y={r.y}
+              width={r.width}
+              height={r.height}
+              color={r.color}
+              selected={selectedId === r.id}
+              draggable
+              dragBoundFunc={dragBoundWithinCanvas(r.width, r.height)}
+              onMouseDown={(e) => {
+                e.cancelBubble = true
+                setIsDraggingRect(true)
+              }}
+              onMouseUp={(e) => {
+                e.cancelBubble = true
+                setIsDraggingRect(false)
+              }}
+              onDragStart={(e) => {
+                e.cancelBubble = true
+                setIsDraggingRect(true)
+              }}
+              onDragMove={handleRectDragMove(r.id, r.width, r.height)}
+              onDragEnd={(e) => {
+                setIsDraggingRect(false)
+                handleRectDragEnd(r.id)(e)
+              }}
+              onClick={() => handleRectClick(r.id)}
+            />
           ))}
         </Layer>
       </Stage>
     </div>
   )
 }
+
 
 
