@@ -9,6 +9,7 @@ import { createRectangle as dbCreateRectangle, loadRectangles, updateRectangle a
 import { supabase } from '../lib/supabase'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import Cursor from './Cursor'
+import PresencePanel from './PresencePanel'
 
 const CANVAS_WIDTH = 3000
 const CANVAS_HEIGHT = 3000
@@ -28,6 +29,7 @@ export default function Canvas() {
   const [currentColorIndex, setCurrentColorIndex] = useState(0)
   const [isDraggingRect, setIsDraggingRect] = useState(false)
   const [remoteCursors, setRemoteCursors] = useState<Record<string, { x: number; y: number; color: string; label: string; ts: number }>>({})
+  const [onlineUsers, setOnlineUsers] = useState<Record<string, { label: string; color: string }>>({})
   
   const { rectangles, selectedId, hydrateRectangles, addRectangle, replaceRectangleId, updateRectangle, selectRectangle, upsertRectangle } = useRectangles()
 
@@ -93,6 +95,42 @@ export default function Canvas() {
     window.addEventListener('online', handleOnline)
     return () => window.removeEventListener('online', handleOnline)
   }, [hydrateRectangles])
+
+  // Presence channel
+  useEffect(() => {
+    let presenceChannel: RealtimeChannel | null = null
+    ;(async () => {
+      const { data } = await supabase.auth.getSession()
+      const me = data.session?.user
+      if (!me) return
+
+      const metadata = { id: me.id, label: me.email || me.id, color: getColorForUserId(me.id) }
+      presenceChannel = supabase.channel('presence-users', {
+        config: { presence: { key: me.id } },
+      })
+
+      presenceChannel
+        .on('presence', { event: 'sync' }, () => {
+          const state = presenceChannel?.presenceState() || {}
+          const users: Record<string, { label: string; color: string }> = {}
+          for (const [key, metas] of Object.entries(state) as [string, any[]][]) {
+            const last = metas[metas.length - 1]
+            if (!last) continue
+            users[key] = { label: last.label as string, color: last.color as string }
+          }
+          setOnlineUsers(users)
+        })
+        .subscribe(async (status) => {
+          if (status === 'SUBSCRIBED') {
+            await presenceChannel?.track(metadata)
+          }
+        })
+    })()
+
+    return () => {
+      if (presenceChannel) supabase.removeChannel(presenceChannel)
+    }
+  }, [])
 
   // debounce map per-rectangle
   const pendingUpdateTimers = useRef<Record<string, number>>({})
@@ -438,6 +476,9 @@ export default function Canvas() {
       {Object.entries(remoteCursors).map(([userId, c]) => (
         <Cursor key={userId} x={c.x} y={c.y} color={c.color} label={c.label} />
       ))}
+      <PresencePanel
+        users={Object.entries(onlineUsers).map(([id, u]) => ({ id, label: u.label, color: u.color }))}
+      />
     </div>
   )
 }
