@@ -3,11 +3,12 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
 import type { KonvaEventObject } from 'konva/lib/Node'
 import Rectangle from './Rectangle'
-import { getRectangleColor, getNextColorIndex } from '../lib/colors'
+import { getRectangleColor, getNextColorIndex, getColorForUserId } from '../lib/colors'
 import { useRectangles } from '../hooks/useRectangles'
 import { createRectangle as dbCreateRectangle, loadRectangles, updateRectangle as dbUpdateRectangle } from '../lib/database'
 import { supabase } from '../lib/supabase'
 import type { RealtimeChannel } from '@supabase/supabase-js'
+import Cursor from './Cursor'
 
 const CANVAS_WIDTH = 3000
 const CANVAS_HEIGHT = 3000
@@ -26,6 +27,7 @@ export default function Canvas() {
   const [stagePos, setStagePos] = useState({ x: 0, y: 0 })
   const [currentColorIndex, setCurrentColorIndex] = useState(0)
   const [isDraggingRect, setIsDraggingRect] = useState(false)
+  const [remoteCursors, setRemoteCursors] = useState<Record<string, { x: number; y: number; color: string; label: string; ts: number }>>({})
   
   const { rectangles, selectedId, hydrateRectangles, addRectangle, replaceRectangleId, updateRectangle, selectRectangle, upsertRectangle } = useRectangles()
 
@@ -125,6 +127,76 @@ export default function Canvas() {
       )
     }
     return lines
+  }, [])
+
+  // Broadcast local cursor position when on canvas
+  useEffect(() => {
+    let interval: number | null = null
+    let channel: RealtimeChannel | null = null
+    ;(async () => {
+      const { data } = await supabase.auth.getSession()
+      const me = data.session?.user
+      if (!me) return
+
+      channel = supabase.channel('cursors-broadcast', { config: { broadcast: { ack: true } } })
+      await channel.subscribe()
+
+      const color = getColorForUserId(me.id)
+      const label = me.email || me.id
+
+      const send = (x: number, y: number) => {
+        channel?.send({
+          type: 'broadcast',
+          event: 'cursor',
+          payload: { userId: me.id, x, y, label, color, ts: Date.now() },
+        })
+      }
+
+      const onMove = (e: MouseEvent) => {
+        // convert screen coords to canvas coords (viewport space)
+        const x = e.clientX
+        const y = e.clientY
+        // throttle at ~30ms
+        if (interval !== null) return
+        interval = window.setTimeout(() => {
+          interval = null
+          send(x, y)
+        }, 30)
+      }
+
+      window.addEventListener('mousemove', onMove)
+
+      // Receive others' cursors
+      channel.on('broadcast', { event: 'cursor' }, (payload) => {
+        const p = payload.payload as any
+        if (!p || !p.userId || p.userId === me.id) return
+        setRemoteCursors((prev) => ({
+          ...prev,
+          [p.userId]: { x: p.x, y: p.y, color: p.color, label: p.label, ts: p.ts },
+        }))
+      })
+
+      // Cleanup stale cursors every 5s
+      const cleaner = window.setInterval(() => {
+        const now = Date.now()
+        setRemoteCursors((prev) => {
+          const next: typeof prev = {}
+          for (const [k, v] of Object.entries(prev)) {
+            if (now - v.ts < 5000) next[k] = v
+          }
+          return next
+        })
+      }, 5000)
+
+      return () => {
+        window.removeEventListener('mousemove', onMove)
+        if (interval !== null) window.clearTimeout(interval)
+        window.clearInterval(cleaner)
+        if (channel) supabase.removeChannel(channel)
+      }
+    })()
+
+    return () => {}
   }, [])
 
   const getPanBounds = (s: number) => {
@@ -280,7 +352,7 @@ export default function Canvas() {
   }
 
   return (
-    <div style={{ width: '100vw', height: '100vh' }}>
+    <div style={{ width: '100vw', height: '100vh', position: 'relative' }}>
       <Stage
         width={stageSize.width}
         height={stageSize.height}
@@ -362,6 +434,10 @@ export default function Canvas() {
           ))}
         </Layer>
       </Stage>
+      {/* Remote Cursors overlay */}
+      {Object.entries(remoteCursors).map(([userId, c]) => (
+        <Cursor key={userId} x={c.x} y={c.y} color={c.color} label={c.label} />
+      ))}
     </div>
   )
 }

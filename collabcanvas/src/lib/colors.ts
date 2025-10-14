@@ -21,4 +21,13 @@ export function getRectangleColor(index: number): RectangleColor {
   return RECTANGLE_COLORS[safeIndex]
 }
 
+export function getColorForUserId(userId: string): RectangleColor {
+  let hash = 0
+  for (let i = 0; i < userId.length; i++) {
+    hash = (hash * 31 + userId.charCodeAt(i)) >>> 0
+  }
+  const idx = hash % RECTANGLE_COLORS.length
+  return RECTANGLE_COLORS[idx]
+}
+
 
