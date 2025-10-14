@@ -283,36 +283,36 @@
   - **Validation:** Sync latency measured < 100ms
 
 ### 3.4 Multiplayer Cursors (FR-6)
-- [ ] **Task 3.4.1:** Set up cursor broadcasting
+- [x] **Task 3.4.1:** Set up cursor broadcasting
   - Initialize Supabase Broadcast channel
   - Track local cursor position on canvas
   - **Validation:** Broadcast channel connected
 
-- [ ] **Task 3.4.2:** Implement cursor position broadcasting
+- [x] **Task 3.4.2:** Implement cursor position broadcasting
   - Send cursor position every 30ms
   - Include user ID and username in payload
   - Only broadcast when cursor on canvas
   - **Validation:** Cursor positions sent via broadcast
 
-- [ ] **Task 3.4.3:** Create Cursor component
+- [x] **Task 3.4.3:** Create Cursor component
   - Create `src/components/Cursor.tsx`
   - Render SVG cursor with username label
   - Apply user-specific color
   - **Validation:** Cursor renders with correct styling
 
-- [ ] **Task 3.4.4:** Receive and display remote cursors
+- [x] **Task 3.4.4:** Receive and display remote cursors
   - Subscribe to broadcast messages
   - Store remote cursor positions in state
   - Filter out own cursor
   - Render Cursor component for each remote user
   - **Validation:** Remote cursors visible and smooth
 
-- [ ] **Task 3.4.5:** Implement cursor cleanup
+- [x] **Task 3.4.5:** Implement cursor cleanup
   - Remove cursors when users disconnect
   - Handle stale cursor cleanup (no update for 5s)
   - **Validation:** Cursors disappear when users leave
 
-- [ ] **Task 3.4.6:** Assign consistent user colors
+- [x] **Task 3.4.6:** Assign consistent user colors
   - Hash user ID to color index
   - Use same color palette as rectangles
   - Ensure color consistency across sessions
