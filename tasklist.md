@@ -229,25 +229,25 @@
   - **Validation:** Correct component shows based on auth state
 
 ### 3.2 Database Integration (FR-9)
-- [ ] **Task 3.2.1:** Create database operations module
+- [x] **Task 3.2.1:** Create database operations module
   - Create `src/lib/database.ts`
   - Implement `createRectangle()` function
   - Implement `updateRectangle()` function
   - Implement `loadRectangles()` function
   - **Validation:** Functions execute without errors
 
-- [ ] **Task 3.2.2:** Integrate create operations
+- [x] **Task 3.2.2:** Integrate create operations
   - Call `createRectangle()` when user creates rectangle
   - Pass user ID from auth context
   - Handle success/error responses
   - **Validation:** Rectangles saved to database
 
-- [ ] **Task 3.2.3:** Integrate update operations
+- [x] **Task 3.2.3:** Integrate update operations
   - Call `updateRectangle()` when user moves rectangle
   - Debounce updates to avoid excessive writes
   - **Validation:** Position updates saved to database
 
-- [ ] **Task 3.2.4:** Implement initial state load
+- [x] **Task 3.2.4:** Implement initial state load
   - Load all rectangles on component mount
   - Populate local state with database data
   - **Validation:** Existing rectangles load on page refresh
