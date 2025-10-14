@@ -205,24 +205,24 @@
 ## Phase 3: Real-Time Collaboration (Hours 12-20)
 
 ### 3.1 Authentication (FR-1)
-- [ ] **Task 3.1.1:** Create Auth component
+- [x] **Task 3.1.1:** Create Auth component
   - Create `src/components/Auth.tsx`
   - Use Supabase Auth UI components
   - Configure Google and GitHub providers
   - **Validation:** Auth UI renders
 
-- [ ] **Task 3.1.2:** Implement auth state management
+- [x] **Task 3.1.2:** Implement auth state management
   - Listen to auth state changes
   - Store user session in state
   - Handle sign in/out events
   - **Validation:** User object available after login
 
-- [ ] **Task 3.1.3:** Add persistent sessions
+- [x] **Task 3.1.3:** Add persistent sessions
   - Configure Supabase session persistence
   - Auto-restore session on page load
   - **Validation:** User stays logged in after refresh
 
-- [ ] **Task 3.1.4:** Implement auth routing
+- [x] **Task 3.1.4:** Implement auth routing
   - Show Auth component if not logged in
   - Show Canvas component if logged in
   - Auto-redirect after successful auth
