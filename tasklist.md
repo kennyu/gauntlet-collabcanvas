@@ -6,14 +6,14 @@
 ## Phase 1: Foundation & Setup (Hours 0-5)
 
 ### 1.1 Project Initialization
-- [ ] **Task 1.1.1:** Create new React project with Vite + TypeScript
+- [x] **Task 1.1.1:** Create new React project with Vite + TypeScript
   - Initialize project: `npm create vite@latest collabcanvas -- --template react-ts`
   - Install base dependencies
   - Configure TypeScript strict mode
   - Set up ESLint and Prettier
   - **Validation:** Project runs with `npm run dev`
 
-- [ ] **Task 1.1.2:** Install core dependencies
+- [x] **Task 1.1.2:** Install core dependencies
   ```bash
   npm install konva react-konva
   npm install @supabase/supabase-js
@@ -21,7 +21,7 @@
   ```
   - **Validation:** All packages installed without conflicts
 
-- [ ] **Task 1.1.3:** Set up Git repository
+- [x] **Task 1.1.3:** Set up Git repository
   - Initialize Git repo
   - Create `.gitignore` (include `.env`)
   - Create initial commit
