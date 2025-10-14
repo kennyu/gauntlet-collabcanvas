@@ -264,13 +264,13 @@
   - Update matching rectangle in local state
   - **Validation:** User A moves, User B sees movement
 
-- [ ] **Task 3.3.3:** Implement conflict resolution
+- [x] **Task 3.3.3:** Implement conflict resolution
   - Use last-write-wins strategy
   - Always apply latest update from database
   - Don't merge conflicting changes
   - **Validation:** Concurrent edits resolve consistently
 
-- [ ] **Task 3.3.4:** Add reconnection logic
+- [x] **Task 3.3.4:** Add reconnection logic
   - Detect connection drops
   - Auto-reconnect when connection restored
   - Reload state after reconnection
