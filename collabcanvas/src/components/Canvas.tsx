@@ -1,11 +1,24 @@
-import { Stage, Layer, Line, Group } from 'react-konva'
+import { Stage, Layer, Line, Group, Rect } from 'react-konva'
 import { useMemo, useState } from 'react'
 import type { ReactElement } from 'react'
 import type { KonvaEventObject } from 'konva/lib/Node'
+import Rectangle from './Rectangle'
 
 const CANVAS_WIDTH = 3000
 const CANVAS_HEIGHT = 3000
 const GRID_SIZE = 50
+const MIN_RECT_SIZE = 20
+const DEFAULT_RECT_SIZE = 100
+import { getRectangleColor, getNextColorIndex } from '../lib/colors'
+
+type RectState = {
+  id: string
+  x: number
+  y: number
+  width: number
+  height: number
+  color: string
+}
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value))
@@ -15,6 +28,8 @@ export default function Canvas() {
   const [stageSize] = useState(() => ({ width: window.innerWidth, height: window.innerHeight }))
   const [scale, setScale] = useState(1)
   const [stagePos, setStagePos] = useState({ x: 0, y: 0 })
+  const [rectangles, setRectangles] = useState<RectState[]>([])
+  const [currentColorIndex, setCurrentColorIndex] = useState(0)
 
   // Fixed virtual canvas size; Stage will be viewport-sized, content is 3000x3000
   const layerSize = useMemo(() => ({ width: CANVAS_WIDTH, height: CANVAS_HEIGHT }), [])
@@ -116,6 +131,30 @@ export default function Canvas() {
     setStagePos(clampedPos)
   }
 
+  const handleBackgroundClick = (e: KonvaEventObject<MouseEvent>) => {
+    const stage = e.target.getStage()
+    if (!stage) return
+
+    const pointer = stage.getPointerPosition()
+    if (!pointer) return
+
+    const rawX = (pointer.x - stagePos.x) / scale
+    const rawY = (pointer.y - stagePos.y) / scale
+
+    const width = Math.max(DEFAULT_RECT_SIZE, MIN_RECT_SIZE)
+    const height = Math.max(DEFAULT_RECT_SIZE, MIN_RECT_SIZE)
+
+    // Clamp position so rectangle stays fully within canvas
+    const x = clamp(rawX, 0, CANVAS_WIDTH - width)
+    const y = clamp(rawY, 0, CANVAS_HEIGHT - height)
+
+    const color = getRectangleColor(currentColorIndex)
+    setCurrentColorIndex((idx) => getNextColorIndex(idx))
+
+    const id = `r-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    setRectangles((prev) => [...prev, { id, x, y, width, height, color }])
+  }
+
   return (
     <div style={{ width: '100vw', height: '100vh' }}>
       <Stage
@@ -137,7 +176,20 @@ export default function Canvas() {
         onWheel={handleWheel}
       >
         <Layer width={layerSize.width} height={layerSize.height}>
-          <Group>{gridLines}</Group>
+          {/* Background rect to capture clicks on empty canvas */}
+          <Rect
+            x={0}
+            y={0}
+            width={layerSize.width}
+            height={layerSize.height}
+            fill={'#000'}
+            opacity={0}
+            onClick={handleBackgroundClick}
+          />
+          <Group listening={false}>{gridLines}</Group>
+          {rectangles.map((r) => (
+            <Rectangle key={r.id} x={r.x} y={r.y} width={r.width} height={r.height} color={r.color} />
+          ))}
         </Layer>
       </Stage>
     </div>

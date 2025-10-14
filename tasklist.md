@@ -140,26 +140,26 @@
   - **Validation:** Cannot pan outside canvas bounds
 
 ### 2.2 Rectangle Creation (FR-3)
-- [ ] **Task 2.2.1:** Implement click-to-create rectangle
+- [x] **Task 2.2.1:** Implement click-to-create rectangle
   - Listen for canvas click events
   - Calculate click position in canvas coordinates
   - Create rectangle at cursor position
   - **Validation:** Click creates rectangle
 
-- [ ] **Task 2.2.2:** Set up color palette system
+- [x] **Task 2.2.2:** Set up color palette system
   - Define 8 preset colors array
   - Implement color cycling logic
   - Track current color index
   - **Validation:** Rectangles cycle through colors
 
-- [ ] **Task 2.2.3:** Create Rectangle component
+- [x] **Task 2.2.3:** Create Rectangle component
   - Create `src/components/Rectangle.tsx`
   - Render Konva Rect with props
   - Default size: 100x100px
   - Apply color from palette
   - **Validation:** Rectangles render with correct size/color
 
-- [ ] **Task 2.2.4:** Add minimum size enforcement
+- [x] **Task 2.2.4:** Add minimum size enforcement
   - Validate width/height >= 20px
   - Enforce constraint in creation logic
   - **Validation:** Cannot create rectangle < 20x20px
@@ -582,7 +582,7 @@
 - [ ] Authentication with Google OAuth
 - [ ] Authentication with GitHub OAuth
 - [x] Canvas with pan and zoom
-- [ ] Rectangle creation
+- [x] Rectangle creation
 - [ ] Rectangle movement
 - [ ] Real-time object synchronization
 - [ ] Multiplayer cursors
