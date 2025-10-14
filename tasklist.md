@@ -319,31 +319,31 @@
   - **Validation:** Same user always has same color
 
 ### 3.5 Presence Awareness (FR-7)
-- [ ] **Task 3.5.1:** Set up Presence tracking
+- [x] **Task 3.5.1:** Set up Presence tracking
   - Initialize Supabase Presence channel
   - Join presence on auth
   - Leave presence on logout/disconnect
   - **Validation:** Presence channel working
 
-- [ ] **Task 3.5.2:** Broadcast user presence
+- [x] **Task 3.5.2:** Broadcast user presence
   - Send user ID, username, and color on join
   - Update presence metadata as needed
   - **Validation:** Presence data available to other users
 
-- [ ] **Task 3.5.3:** Create Presence Panel component
+- [x] **Task 3.5.3:** Create Presence Panel component
   - Create `src/components/PresencePanel.tsx`
   - Position in top-left corner
   - Display user count
   - **Validation:** Panel renders in correct position
 
-- [ ] **Task 3.5.4:** Display online users list
+- [x] **Task 3.5.4:** Display online users list
   - Subscribe to presence state changes
   - Render list of all online users
   - Show color dot next to each username
   - Highlight current user with "(You)"
   - **Validation:** All users listed with correct colors
 
-- [ ] **Task 3.5.5:** Handle presence updates
+- [x] **Task 3.5.5:** Handle presence updates
   - Update list on user join
   - Update list on user leave
   - Target <200ms update latency
