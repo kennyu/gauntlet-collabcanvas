@@ -43,6 +43,16 @@ export function useRectangles() {
     return rectangles.find(r => r.id === selectedId) || null
   }, [rectangles, selectedId])
 
+  const upsertRectangle = useCallback((incoming: RectangleState) => {
+    setRectangles(prev => {
+      const idx = prev.findIndex(r => r.id === incoming.id)
+      if (idx === -1) return [...prev, incoming]
+      const next = prev.slice()
+      next[idx] = { ...next[idx], ...incoming }
+      return next
+    })
+  }, [])
+
   return {
     rectangles,
     selectedId,
@@ -52,5 +62,6 @@ export function useRectangles() {
     updateRectangle,
     selectRectangle,
     getSelectedRectangle,
+    upsertRectangle,
   }
 }

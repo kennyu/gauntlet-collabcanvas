@@ -6,6 +6,7 @@ import Rectangle from './Rectangle'
 import { getRectangleColor, getNextColorIndex } from '../lib/colors'
 import { useRectangles } from '../hooks/useRectangles'
 import { createRectangle as dbCreateRectangle, loadRectangles, updateRectangle as dbUpdateRectangle } from '../lib/database'
+import { supabase } from '../lib/supabase'
 
 const CANVAS_WIDTH = 3000
 const CANVAS_HEIGHT = 3000
@@ -25,7 +26,7 @@ export default function Canvas() {
   const [currentColorIndex, setCurrentColorIndex] = useState(0)
   const [isDraggingRect, setIsDraggingRect] = useState(false)
   
-  const { rectangles, selectedId, hydrateRectangles, addRectangle, replaceRectangleId, updateRectangle, selectRectangle } = useRectangles()
+  const { rectangles, selectedId, hydrateRectangles, addRectangle, replaceRectangleId, updateRectangle, selectRectangle, upsertRectangle } = useRectangles()
 
   // Load initial rectangles from DB
   useEffect(() => {
@@ -38,6 +39,36 @@ export default function Canvas() {
       }
     })()
   }, [hydrateRectangles])
+
+  // Realtime: INSERT and UPDATE
+  useEffect(() => {
+    const channel = supabase
+      .channel('canvas-objects-rt')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'canvas_objects' },
+        (payload: any) => {
+          const r = payload.new
+          if (r.type !== 'rectangle') return
+          upsertRectangle({ id: r.id, x: r.x, y: r.y, width: r.width, height: r.height, color: r.color })
+        },
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'canvas_objects' },
+        (payload: any) => {
+          const r = payload.new
+          if (r.type !== 'rectangle') return
+          // last-write-wins - simply apply incoming
+          upsertRectangle({ id: r.id, x: r.x, y: r.y, width: r.width, height: r.height, color: r.color })
+        },
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [upsertRectangle])
 
   // debounce map per-rectangle
   const pendingUpdateTimers = useRef<Record<string, number>>({})
