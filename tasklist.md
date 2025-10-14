@@ -29,7 +29,7 @@
   - **Validation:** Repository visible on GitHub
 
 ### 1.2 Supabase Configuration
-- [ ] **Task 1.2.1:** Create Supabase project
+- [X] **Task 1.2.1:** Create Supabase project
   - Sign up for Supabase account
   - Create new project
   - Note project URL and anon key
@@ -41,7 +41,7 @@
   - Configure redirect URLs for localhost and production
   - **Validation:** OAuth settings saved in dashboard
 
-- [ ] **Task 1.2.3:** Create database schema
+- [x] **Task 1.2.3:** Create database schema
   - Run SQL in Supabase SQL Editor:
   ```sql
   CREATE TABLE canvas_objects (
@@ -66,7 +66,7 @@
   ```
   - **Validation:** Table visible in Table Editor
 
-- [ ] **Task 1.2.4:** Enable Row Level Security (RLS)
+- [x] **Task 1.2.4:** Enable Row Level Security (RLS)
   - Enable RLS on `canvas_objects` table
   - Create policy: Allow authenticated users to SELECT
   - Create policy: Allow authenticated users to INSERT
@@ -79,14 +79,14 @@
   - **Validation:** Realtime toggle shows "enabled"
 
 ### 1.3 Environment Setup
-- [ ] **Task 1.3.1:** Create environment configuration
+- [x] **Task 1.3.1:** Create environment configuration
   - Create `.env.local` file
   - Add Supabase URL: `VITE_SUPABASE_URL=`
   - Add Supabase anon key: `VITE_SUPABASE_ANON_KEY=`
   - Create `.env.example` template
   - **Validation:** Environment variables load in app
 
-- [ ] **Task 1.3.2:** Create Supabase client
+- [x] **Task 1.3.2:** Create Supabase client
   - Create `src/lib/supabase.ts`
   - Initialize Supabase client with env variables
   - Export typed client
