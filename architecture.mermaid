@@ -1,0 +1,80 @@
+graph TB
+    subgraph "Client Browser"
+        subgraph "React Application"
+            UI[UI Layer]
+            Canvas[Konva.js Canvas<br/>3000x3000px]
+            Auth[Auth Component]
+            Presence[Presence Panel]
+            FPS[FPS Counter]
+            State[Local State Management]
+        end
+        
+        UI --> Canvas
+        UI --> Presence
+        UI --> FPS
+        Auth --> State
+        Canvas --> State
+    end
+    
+    subgraph "Vercel Platform"
+        Deploy[Static Hosting<br/>React Build]
+    end
+    
+    subgraph "Supabase Cloud"
+        subgraph "Authentication"
+            SupaAuth[Supabase Auth]
+            JWT[JWT Tokens]
+            Google[Google OAuth]
+            GitHub[GitHub OAuth]
+        end
+        
+        subgraph "Database"
+            Postgres[(PostgreSQL)]
+            RLS[Row Level Security]
+            Objects[canvas_objects table]
+        end
+        
+        subgraph "Real-time Services"
+            Realtime[Supabase Realtime<br/>WebSocket]
+            Broadcast[Broadcast Channel<br/>Cursors]
+            PresenceAPI[Presence API<br/>Online Users]
+        end
+    end
+    
+    %% Authentication Flow
+    Auth -->|OAuth Request| SupaAuth
+    SupaAuth -->|Provider Auth| Google
+    SupaAuth -->|Provider Auth| GitHub
+    SupaAuth -->|JWT Token| JWT
+    JWT -->|Authenticated| State
+    
+    %% Database Operations
+    State -->|Create/Update Objects| Postgres
+    Postgres -->|RLS Check| RLS
+    RLS -->|Authorized| Objects
+    Objects -->|Object Data| State
+    
+    %% Real-time Synchronization
+    State -->|Subscribe to Changes| Realtime
+    Realtime -->|Object Updates| Objects
+    Realtime -->|Push Updates| State
+    
+    %% Cursor Broadcasting
+    Canvas -->|Cursor Position<br/>Every 30ms| Broadcast
+    Broadcast -->|Remote Cursors| Canvas
+    
+    %% Presence Awareness
+    Auth -->|User Join/Leave| PresenceAPI
+    PresenceAPI -->|Online Users List| Presence
+    
+    %% Deployment
+    Deploy -->|Serve App| UI
+    
+    %% Performance Monitoring
+    Canvas -->|Frame Rate| FPS
+    
+    style Canvas fill:#e3f2fd
+    style Postgres fill:#fff3e0
+    style Realtime fill:#f3e5f5
+    style SupaAuth fill:#e8f5e9
+    style Deploy fill:#fce4ec
