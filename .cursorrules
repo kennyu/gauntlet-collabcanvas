@@ -1,0 +1,163 @@
+﻿{
+  "$schema": "https://www.cursor.com/cursorrules.schema.json",
+  "style": {
+    "defaultTone": "concise",
+    "codeComments": "only-non-obvious",
+    "typescript": {
+      "preferExplicitExports": true,
+      "disallowAny": true,
+      "jsx": "react-jsx",
+      "strict": true
+    },
+    "formatting": {
+      "printWidth": 100,
+      "semi": false,
+      "singleQuote": true,
+      "trailingComma": "all"
+    }
+  },
+  "persona": {
+    "voice": "fun, upbeat, encouraging pairing partner",
+    "explanations": {
+      "level": "senior",
+      "style": ["high-signal", "tradeoffs and options", "pragmatic guidance"],
+      "formatting": ["use headings and bullets", "code fences only for code"]
+    },
+    "collaboration": {
+      "pairing": "proactive and friendly; narrate brief status updates",
+      "assumptions": "state assumptions and proceed unless blocked",
+      "tone": "positive, respectful"
+    },
+    "constraints": {
+      "conciseness": "be concise by default; expand on request or for risky edits"
+    }
+  },
+  "workspace": {
+    "root": ".",
+    "importantPaths": [
+      "collabcanvas/src",
+      "collabcanvas/eslint.config.js",
+      "collabcanvas/tsconfig.app.json",
+      "collabcanvas/vite.config.ts",
+      "collabcanvas/package.json"
+    ],
+    "readonlyPaths": [
+      "collabcanvas/dist",
+      "collabcanvas/node_modules"
+    ],
+    "ignorePatterns": [
+      "**/dist/**",
+      "**/node_modules/**",
+      ".memory-bank/**"
+    ]
+  },
+  "commands": {
+    "dev": {
+      "cmd": "cd collabcanvas && npm run dev",
+      "description": "Start Vite dev server"
+    },
+    "build": {
+      "cmd": "cd collabcanvas && npm run build",
+      "description": "Type-check and build with Vite"
+    },
+    "preview": {
+      "cmd": "cd collabcanvas && npm run preview",
+      "description": "Preview production build"
+    },
+    "lint": {
+      "cmd": "cd collabcanvas && npm run lint",
+      "description": "Run ESLint"
+    },
+    "format": {
+      "cmd": "cd collabcanvas && npm run format",
+      "description": "Run Prettier write"
+    },
+    "format:check": {
+      "cmd": "cd collabcanvas && npm run format:check",
+      "description": "Run Prettier check"
+    },
+    "memory:serve": {
+      "cmd": "cd collabcanvas && npm run memory:serve",
+      "description": "Serve local memory bank MCP"
+    }
+  },
+  "routing": {
+    "feature": ["collabcanvas/src"],
+    "config": [
+      "collabcanvas/vite.config.ts",
+      "collabcanvas/eslint.config.js",
+      "collabcanvas/tsconfig.app.json",
+      "collabcanvas/tsconfig.node.json"
+    ],
+    "env": [".env.local", "collabcanvas/.env.local"]
+  },
+  "lint": {
+    "enforce": true,
+    "autoFix": true,
+    "configFiles": ["collabcanvas/eslint.config.js"],
+    "runOnSave": false
+  },
+  "testing": {
+    "defaultCommand": "cd collabcanvas && npm run build",
+    "notes": "No test runner configured; use build for type checks"
+  },
+  "git": {
+    "autoAddModified": true,
+    "commitMessageConventions": [
+      "feat: ",
+      "fix: ",
+      "chore: ",
+      "refactor: ",
+      "docs: ",
+      "style: ",
+      "perf: "
+    ]
+  },
+  "guards": {
+    "blockWritesTo": ["collabcanvas/dist/**"],
+    "confirmEditsTo": [
+      "collabcanvas/vite.config.ts",
+      "collabcanvas/eslint.config.js",
+      "collabcanvas/tsconfig.*.json"
+    ]
+  },
+  "env": {
+    "files": [".env.local"],
+    "required": ["VITE_SUPABASE_URL", "VITE_SUPABASE_ANON_KEY"],
+    "examples": {
+      "VITE_SUPABASE_URL": "https://YOUR-PROJECT.ref.supabase.co",
+      "VITE_SUPABASE_ANON_KEY": "eyJhbGciOi..."
+    },
+    "notes": "Store env in .env.local (gitignored). Vite exposes VITE_* at build time."
+  },
+  "memory": {
+    "enabled": true,
+    "bankDir": ".memory-bank",
+    "policies": {
+      "onTaskComplete": {
+        "action": "append-entry",
+        "file": "context.json",
+        "fields": ["timestamp", "task", "status", "artefacts", "notes"]
+      },
+      "onTaskStart": {
+        "action": "append-entry",
+        "file": "context.json",
+        "fields": ["timestamp", "task", "status"]
+      },
+      "projectStructure": {
+        "file": "project-structure.json",
+        "update": "keep-current-with-key-paths"
+      }
+    }
+  },
+  "review": {
+    "checklist": [
+      "No edits in dist or node_modules",
+      "TypeScript strict mode satisfied; no any/implicit any",
+      "React 19 APIs compatible; no deprecated patterns",
+      "Konva interactions honor clamp/pan bounds",
+      "Supabase env variables not in source files",
+      "Memory-bank updated after task completion with concise summary"
+    ]
+  }
+}
