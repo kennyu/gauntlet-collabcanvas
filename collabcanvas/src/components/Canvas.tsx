@@ -41,6 +41,24 @@ export function Canvas() {
   const stageOriginRef = useRef({ x: 0, y: 0 })
   const hasMovedRef = useRef(false)
 
+  const computePanBounds = useCallback(
+    (nextScale = scale) => {
+      const scaledWidth = WORKSPACE_SIZE * nextScale
+      const scaledHeight = WORKSPACE_SIZE * nextScale
+
+      const extraX = viewportSize.width - scaledWidth
+      const extraY = viewportSize.height - scaledHeight
+
+      const minX = extraX >= 0 ? extraX / 2 : viewportSize.width - scaledWidth
+      const maxX = extraX >= 0 ? extraX / 2 : 0
+      const minY = extraY >= 0 ? extraY / 2 : viewportSize.height - scaledHeight
+      const maxY = extraY >= 0 ? extraY / 2 : 0
+
+      return { minX, maxX, minY, maxY }
+    },
+    [scale, viewportSize.height, viewportSize.width],
+  )
+
   const gridLines = useMemo(() => {
     const lines = []
     for (let i = GRID_SIZE; i < WORKSPACE_SIZE; i += GRID_SIZE) {
@@ -68,22 +86,12 @@ export function Canvas() {
 
   const clampStagePosition = useCallback(
     (next: { x: number; y: number }, nextScale = scale) => {
-      const scaledWidth = WORKSPACE_SIZE * nextScale
-      const scaledHeight = WORKSPACE_SIZE * nextScale
-
-      const minX =
-        viewportSize.width < scaledWidth
-          ? viewportSize.width - scaledWidth
-          : 0
-      const minY =
-        viewportSize.height < scaledHeight
-          ? viewportSize.height - scaledHeight
-          : 0
-      const clampedX = Math.max(minX, Math.min(0, next.x))
-      const clampedY = Math.max(minY, Math.min(0, next.y))
+      const bounds = computePanBounds(nextScale)
+      const clampedX = Math.max(bounds.minX, Math.min(bounds.maxX, next.x))
+      const clampedY = Math.max(bounds.minY, Math.min(bounds.maxY, next.y))
       return { x: clampedX, y: clampedY }
     },
-    [scale, viewportSize.height, viewportSize.width],
+    [computePanBounds, scale],
   )
 
   useEffect(() => {
