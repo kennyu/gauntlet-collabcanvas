@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Group, Layer, Line, Rect, Stage } from 'react-konva'
 import type { KonvaEventObject } from 'konva/lib/Node'
+import type { Stage as KonvaStage } from 'konva/lib/Stage'
 import { Rectangle, type CanvasRectangle } from './Rectangle'
 
 const WORKSPACE_SIZE = 3000
@@ -17,6 +18,9 @@ const RECT_COLORS = [
   '#a855f7',
   '#ec4899',
 ]
+const SCALE_MIN = 0.1
+const SCALE_MAX = 5
+const SCALE_STEP = 1.1
 
 const generateRectangleId = () => {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
@@ -30,6 +34,7 @@ export function Canvas() {
   const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 })
   const [stagePosition, setStagePosition] = useState({ x: 0, y: 0 })
   const [isPanning, setIsPanning] = useState(false)
+  const [scale, setScale] = useState(1)
   const [rectangles, setRectangles] = useState<CanvasRectangle[]>([])
   const [colorIndex, setColorIndex] = useState(0)
   const pointerOriginRef = useRef({ x: 0, y: 0 })
@@ -62,20 +67,23 @@ export function Canvas() {
   }, [])
 
   const clampStagePosition = useCallback(
-    (next: { x: number; y: number }) => {
+    (next: { x: number; y: number }, nextScale = scale) => {
+      const scaledWidth = WORKSPACE_SIZE * nextScale
+      const scaledHeight = WORKSPACE_SIZE * nextScale
+
       const minX =
-        viewportSize.width < WORKSPACE_SIZE
-          ? viewportSize.width - WORKSPACE_SIZE
+        viewportSize.width < scaledWidth
+          ? viewportSize.width - scaledWidth
           : 0
       const minY =
-        viewportSize.height < WORKSPACE_SIZE
-          ? viewportSize.height - WORKSPACE_SIZE
+        viewportSize.height < scaledHeight
+          ? viewportSize.height - scaledHeight
           : 0
       const clampedX = Math.max(minX, Math.min(0, next.x))
       const clampedY = Math.max(minY, Math.min(0, next.y))
       return { x: clampedX, y: clampedY }
     },
-    [viewportSize.height, viewportSize.width],
+    [scale, viewportSize.height, viewportSize.width],
   )
 
   useEffect(() => {
@@ -164,6 +172,22 @@ export function Canvas() {
     return null
   }
 
+  const getCanvasPointer = (stage: KonvaStage | null) => {
+    if (!stage) {
+      return null
+    }
+    const pointer = stage.getPointerPosition()
+    if (!pointer) {
+      return null
+    }
+    const stageScale = stage.scaleX()
+    const position = stage.position()
+    return {
+      x: (pointer.x - position.x) / stageScale,
+      y: (pointer.y - position.y) / stageScale,
+    }
+  }
+
   const handlePanStart = useCallback(
     (event: KonvaEventObject<MouseEvent | TouchEvent>) => {
       if (
@@ -244,7 +268,7 @@ export function Canvas() {
       }
 
       const stage = event.target.getStage()
-      const pointer = stage?.getPointerPosition()
+      const pointer = getCanvasPointer(stage)
       if (!stage || !pointer) {
         hasMovedRef.current = false
         return
@@ -265,6 +289,43 @@ export function Canvas() {
     [createRectangleAt, isPanning],
   )
 
+  const handleWheel = useCallback(
+    (event: KonvaEventObject<WheelEvent>) => {
+      event.evt.preventDefault()
+      const stage = event.target.getStage()
+      if (!stage) {
+        return
+      }
+
+      const pointer = getCanvasPointer(stage)
+      if (!pointer) {
+        return
+      }
+
+      const direction = event.evt.deltaY > 0 ? 1 / SCALE_STEP : SCALE_STEP
+      let nextScale = scale * direction
+      nextScale = Math.min(SCALE_MAX, Math.max(SCALE_MIN, nextScale))
+
+      if (nextScale === scale) {
+        return
+      }
+
+      const pointerPosition = stage.getPointerPosition()
+      if (!pointerPosition) {
+        return
+      }
+
+      const newStagePos = {
+        x: pointerPosition.x - pointer.x * nextScale,
+        y: pointerPosition.y - pointer.y * nextScale,
+      }
+
+      setScale(nextScale)
+      setStagePosition(clampStagePosition(newStagePos, nextScale))
+    },
+    [clampStagePosition, scale],
+  )
+
   return (
     <div
       ref={containerRef}
@@ -275,6 +336,8 @@ export function Canvas() {
         height={viewportSize.height}
         x={stagePosition.x}
         y={stagePosition.y}
+        scaleX={scale}
+        scaleY={scale}
         onMouseDown={handlePanStart}
         onMouseMove={handlePanMove}
         onMouseUp={handlePanEnd}
@@ -282,6 +345,7 @@ export function Canvas() {
         onTouchMove={handlePanMove}
         onTouchEnd={handlePanEnd}
         onTouchCancel={handlePanEnd}
+        onWheel={handleWheel}
       >
         <Layer>
           <Rect
