@@ -1,5 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 
+export const realtimeSchema = 'public'
+
 export type Json =
   | string
   | number
@@ -18,6 +20,7 @@ export type Database = {
           created_by: string | null
           height: number
           id: string
+          canvas_id: string
           type: string
           updated_at: string | null
           width: number
@@ -30,6 +33,7 @@ export type Database = {
           created_by?: string | null
           height: number
           id?: string
+          canvas_id: string
           type?: string
           updated_at?: string | null
           width: number
@@ -42,6 +46,7 @@ export type Database = {
           created_by?: string | null
           height?: number
           id?: string
+          canvas_id?: string
           type?: string
           updated_at?: string | null
           width?: number
