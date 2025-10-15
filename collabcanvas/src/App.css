@@ -71,6 +71,134 @@
   cursor: grabbing;
 }
 
+.canvas-cursors-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.canvas-cursor {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+  pointer-events: none;
+  transform: translate(-6px, -12px);
+}
+
+.canvas-cursor__icon {
+  width: 20px;
+  height: 26px;
+  filter: drop-shadow(0 4px 10px rgba(15, 23, 42, 0.35));
+}
+
+.canvas-cursor__label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.15rem 0.45rem;
+  border-radius: 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #ffffff;
+  letter-spacing: -0.01em;
+  box-shadow:
+    0 8px 18px -12px rgba(15, 23, 42, 0.6),
+    0 4px 10px -10px rgba(15, 23, 42, 0.45);
+  opacity: 0.96;
+  transform: translate(-2px, 0);
+}
+
+.presence-panel {
+  position: absolute;
+  top: 1rem;
+  left: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem 0.9rem;
+  min-width: 180px;
+  border-radius: 0.85rem;
+  background-color: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(4px);
+  box-shadow:
+    0 16px 30px -18px rgba(15, 23, 42, 0.45),
+    0 8px 16px -20px rgba(15, 23, 42, 0.35);
+  border: 1px solid rgba(226, 232, 240, 0.8);
+  color: #1f2937;
+  pointer-events: none;
+}
+
+.presence-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 600;
+  font-size: 0.8rem;
+  letter-spacing: 0.02em;
+  color: #0f172a;
+}
+
+.presence-panel__title {
+  text-transform: uppercase;
+  font-size: 0.7rem;
+  color: #475569;
+  letter-spacing: 0.12em;
+}
+
+.presence-panel__count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.75rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 9999px;
+  background-color: #e0f2fe;
+  color: #0ea5e9;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.presence-panel__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+}
+
+.presence-panel__item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.presence-panel__dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 9999px;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.9);
+}
+
+.presence-panel__name {
+  color: #334155;
+  font-weight: 500;
+}
+
+.presence-panel__you {
+  color: #64748b;
+  font-weight: 500;
+}
+
+.presence-panel__empty {
+  color: #94a3b8;
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+
 .canvas-overlay {
   position: absolute;
   inset: 0;

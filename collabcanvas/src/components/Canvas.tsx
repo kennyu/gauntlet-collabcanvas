@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Group, Layer, Line, Rect, Stage } from 'react-konva'
+import type { RealtimeChannel, User } from '@supabase/supabase-js'
 import type { KonvaEventObject } from 'konva/lib/Node'
 import type { Stage as KonvaStage } from 'konva/lib/Stage'
 import { Rectangle, type CanvasRectangle } from './Rectangle'
@@ -11,6 +12,8 @@ import {
   type RectangleRecord,
 } from '../lib/database'
 import { supabase } from '../lib/supabase'
+import { Cursor } from './Cursor'
+import { PresencePanel, type PresenceUser } from './PresencePanel'
 
 const WORKSPACE_SIZE = 3000
 const GRID_SIZE = 50
@@ -29,6 +32,28 @@ const RECT_COLORS = [
 const SCALE_MIN = 0.1
 const SCALE_MAX = 5
 const SCALE_STEP = 1.1
+
+const hashString = (value: string) => {
+  let hash = 0
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) | 0
+  }
+  return Math.abs(hash)
+}
+
+const getColorForUser = (userId: string | null | undefined) => {
+  if (!userId) {
+    return RECT_COLORS[0]
+  }
+  const hash = hashString(userId)
+  return RECT_COLORS[hash % RECT_COLORS.length]
+}
+
+const getUserDisplayName = (user: User | null | undefined) =>
+  user?.user_metadata?.full_name ??
+  user?.email ??
+  user?.user_metadata?.user_name ??
+  'Anonymous'
 
 const mapRecordToRectangle = (
   record: RectangleRecord,
@@ -52,6 +77,15 @@ const log = (...args: unknown[]) => {
   console.log('[CanvasSync]', ...args)
 }
 
+type RemoteCursor = {
+  userId: string
+  name: string
+  color: string
+  x: number
+  y: number
+  updatedAt: number
+}
+
 type CanvasProps = {
   canvasId: string
 }
@@ -66,10 +100,24 @@ export function Canvas({ canvasId }: CanvasProps) {
   const [rectangles, setRectangles] = useState<CanvasRectangle[]>([])
   const [colorIndex, setColorIndex] = useState(0)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [remoteCursors, setRemoteCursors] = useState<Record<string, RemoteCursor>>(
+    {},
+  )
+  const [presenceUsers, setPresenceUsers] = useState<PresenceUser[]>([])
 
   const pointerOriginRef = useRef({ x: 0, y: 0 })
   const stageOriginRef = useRef({ x: 0, y: 0 })
   const hasMovedRef = useRef(false)
+  const cursorChannelRef = useRef<RealtimeChannel | null>(null)
+  const channelReadyRef = useRef(false)
+  const lastCursorSentRef = useRef(0)
+  const cursorVisibleRef = useRef(false)
+
+  const displayName = useMemo(() => getUserDisplayName(user), [user])
+  const localCursorColor = useMemo(
+    () => getColorForUser(user?.id),
+    [user?.id],
+  )
 
   useEffect(() => {
     const fetchRectangles = async () => {
@@ -156,6 +204,178 @@ export function Canvas({ canvasId }: CanvasProps) {
       supabase.removeChannel(channel)
     }
   }, [canvasId])
+
+  useEffect(() => {
+    if (!user) {
+      setPresenceUsers([])
+      setRemoteCursors({})
+      cursorChannelRef.current = null
+      channelReadyRef.current = false
+      return
+    }
+
+    const channel = supabase.channel(`canvas:${canvasId}:collab`, {
+      config: {
+        presence: { key: user.id },
+        broadcast: { self: false },
+      },
+    })
+
+    cursorChannelRef.current = channel
+    channelReadyRef.current = false
+
+    type PresenceMeta = {
+      userId: string
+      name: string
+      color: string
+    }
+
+    const syncPresenceState = () => {
+      const state = channel.presenceState<PresenceMeta>()
+      const unique = new Map<string, PresenceUser>()
+      Object.entries(state).forEach(([key, sessions]) => {
+        sessions.forEach((session) => {
+          if (!session) {
+            return
+          }
+          const id = session.userId ?? key
+          if (!unique.has(id)) {
+            unique.set(id, {
+              id,
+              name: session.name ?? getUserDisplayName(null),
+              color: session.color ?? getColorForUser(id),
+              isSelf: id === user.id,
+            })
+          }
+        })
+      })
+      const next = Array.from(unique.values()).sort((a, b) =>
+        a.name.localeCompare(b.name),
+      )
+      setPresenceUsers(next)
+    }
+
+    const handleCursorBroadcast = (payload: {
+      payload: unknown
+    }) => {
+      const data = payload.payload as {
+        userId?: string
+        name?: string
+        color?: string
+        x?: number
+        y?: number
+        visible?: boolean
+        timestamp?: number
+      }
+      const userId = data?.userId
+      if (!userId || userId === user.id) {
+        return
+      }
+      setRemoteCursors((current) => {
+        const next = { ...current }
+        if (data.visible === false || data.x === undefined || data.y === undefined) {
+          if (next[userId]) {
+            delete next[userId]
+          }
+          return next
+        }
+        next[userId] = {
+          userId,
+          name: data.name ?? 'Collaborator',
+          color: data.color ?? getColorForUser(userId),
+          x: data.x,
+          y: data.y,
+          updatedAt:
+            typeof data.timestamp === 'number' ? data.timestamp : Date.now(),
+        }
+        return next
+      })
+    }
+
+    channel
+      .on('broadcast', { event: 'cursor' }, handleCursorBroadcast)
+      .on('presence', { event: 'sync' }, syncPresenceState)
+      .on('presence', { event: 'join' }, syncPresenceState)
+      .on('presence', { event: 'leave' }, (payload) => {
+        const key =
+          (payload as { key?: string } | undefined)?.key ??
+          (payload as { userId?: string } | undefined)?.userId ??
+          null
+        if (key) {
+          setRemoteCursors((current) => {
+            if (!current[key]) {
+              return current
+            }
+            const next = { ...current }
+            delete next[key]
+            return next
+          })
+        }
+        syncPresenceState()
+      })
+
+    channel.subscribe((status) => {
+      log('Collab channel status', status)
+      if (status === 'SUBSCRIBED') {
+        channelReadyRef.current = true
+        void channel.track({
+          userId: user.id,
+          name: displayName,
+          color: localCursorColor,
+        })
+      }
+      if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
+        channelReadyRef.current = false
+      }
+    })
+
+    return () => {
+      if (channelReadyRef.current) {
+        void channel.send({
+          type: 'broadcast',
+          event: 'cursor',
+          payload: {
+            userId: user.id,
+            visible: false,
+            timestamp: Date.now(),
+          },
+        })
+      }
+      channelReadyRef.current = false
+      cursorChannelRef.current = null
+      setRemoteCursors((current) => {
+        const next = { ...current }
+        delete next[user.id]
+        return next
+      })
+      setPresenceUsers((current) =>
+        current.filter((presence) => presence.id !== user.id),
+      )
+      supabase.removeChannel(channel)
+    }
+  }, [canvasId, displayName, localCursorColor, user])
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      setRemoteCursors((current) => {
+        const now = Date.now()
+        let changed = false
+        const next: Record<string, RemoteCursor> = {}
+        Object.entries(current).forEach(([key, cursor]) => {
+          if (now - cursor.updatedAt <= 5000) {
+            next[key] = cursor
+          } else {
+            changed = true
+          }
+        })
+        return changed ? next : current
+      })
+    }, 2000)
+
+    return () => {
+      window.clearInterval(interval)
+    }
+  }, [])
 
   useEffect(() => {
     const handleResize = () => {
@@ -343,6 +563,71 @@ export function Canvas({ canvasId }: CanvasProps) {
     [canvasId],
   )
 
+  const remoteCursorPositions = useMemo(() => {
+    const entries = Object.values(remoteCursors)
+    return entries
+      .map((cursor) => {
+        const screenX = stagePosition.x + cursor.x * scale
+        const screenY = stagePosition.y + cursor.y * scale
+        const isVisible =
+          screenX >= -80 &&
+          screenX <= viewportSize.width + 80 &&
+          screenY >= -80 &&
+          screenY <= viewportSize.height + 80
+        return {
+          ...cursor,
+          screenX,
+          screenY,
+          isVisible,
+        }
+      })
+      .filter((cursor) => cursor.isVisible)
+  }, [remoteCursors, scale, stagePosition.x, stagePosition.y, viewportSize.height, viewportSize.width])
+
+  const broadcastCursorPosition = useCallback(
+    (position: { x: number; y: number } | null) => {
+      const channel = cursorChannelRef.current
+      if (!channel || !channelReadyRef.current || !user) {
+        return
+      }
+
+      if (position) {
+        const now = performance.now()
+        if (cursorVisibleRef.current && now - lastCursorSentRef.current < 30) {
+          return
+        }
+        lastCursorSentRef.current = now
+        cursorVisibleRef.current = true
+        void channel.send({
+          type: 'broadcast',
+          event: 'cursor',
+          payload: {
+            userId: user.id,
+            name: displayName,
+            color: localCursorColor,
+            x: position.x,
+            y: position.y,
+            visible: true,
+            timestamp: Date.now(),
+          },
+        })
+      } else if (cursorVisibleRef.current) {
+        cursorVisibleRef.current = false
+        lastCursorSentRef.current = 0
+        void channel.send({
+          type: 'broadcast',
+          event: 'cursor',
+          payload: {
+            userId: user.id,
+            visible: false,
+            timestamp: Date.now(),
+          },
+        })
+      }
+    },
+    [displayName, localCursorColor, user],
+  )
+
   const getClientCoordinates = (
     event: KonvaEventObject<MouseEvent | TouchEvent>,
   ) => {
@@ -376,6 +661,32 @@ export function Canvas({ canvasId }: CanvasProps) {
     }
   }
 
+  const handlePointerMove = useCallback(
+    (event: KonvaEventObject<any>) => {
+      const stage = event.target.getStage()
+      const pointer = getCanvasPointer(stage)
+      if (!stage) {
+        return
+      }
+      if (
+        pointer &&
+        pointer.x >= 0 &&
+        pointer.x <= WORKSPACE_SIZE &&
+        pointer.y >= 0 &&
+        pointer.y <= WORKSPACE_SIZE
+      ) {
+        broadcastCursorPosition(pointer)
+      } else {
+        broadcastCursorPosition(null)
+      }
+    },
+    [broadcastCursorPosition],
+  )
+
+  const handlePointerLeave = useCallback(() => {
+    broadcastCursorPosition(null)
+  }, [broadcastCursorPosition])
+
   const handlePanStart = useCallback(
     (event: KonvaEventObject<MouseEvent | TouchEvent>) => {
       if (
@@ -395,12 +706,18 @@ export function Canvas({ canvasId }: CanvasProps) {
         return
       }
 
+      const stage = event.target.getStage()
+      const pointer = getCanvasPointer(stage)
+      if (pointer) {
+        broadcastCursorPosition(pointer)
+      }
+
       hasMovedRef.current = false
       pointerOriginRef.current = clientPoint
       stageOriginRef.current = stagePosition
       setIsPanning(true)
     },
-    [stagePosition],
+    [broadcastCursorPosition, stagePosition],
   )
 
   const handlePanMove = useCallback(
@@ -483,6 +800,46 @@ export function Canvas({ canvasId }: CanvasProps) {
     [createRectangleAt, isPanning, selectedId],
   )
 
+  const handleStageMouseMove = useCallback(
+    (event: KonvaEventObject<MouseEvent | TouchEvent>) => {
+      handlePointerMove(event)
+      handlePanMove(event)
+    },
+    [handlePanMove, handlePointerMove],
+  )
+
+  const handleStageTouchMove = useCallback(
+    (event: KonvaEventObject<TouchEvent>) => {
+      handlePointerMove(event)
+      handlePanMove(event)
+    },
+    [handlePanMove, handlePointerMove],
+  )
+
+  const handleStageMouseUp = useCallback(
+    (event: KonvaEventObject<MouseEvent>) => {
+      handlePanEnd(event)
+      handlePointerMove(event)
+    },
+    [handlePanEnd, handlePointerMove],
+  )
+
+  const handleStageTouchEnd = useCallback(
+    (event: KonvaEventObject<TouchEvent>) => {
+      handlePanEnd(event)
+      handlePointerLeave()
+    },
+    [handlePanEnd, handlePointerLeave],
+  )
+
+  const handleStageTouchCancel = useCallback(
+    (event: KonvaEventObject<TouchEvent>) => {
+      handlePanEnd(event)
+      handlePointerLeave()
+    },
+    [handlePanEnd, handlePointerLeave],
+  )
+
   const handleWheel = useCallback(
     (event: KonvaEventObject<WheelEvent>) => {
       event.evt.preventDefault()
@@ -533,12 +890,13 @@ export function Canvas({ canvasId }: CanvasProps) {
         scaleX={scale}
         scaleY={scale}
         onMouseDown={handlePanStart}
-        onMouseMove={handlePanMove}
-        onMouseUp={handlePanEnd}
+        onMouseMove={handleStageMouseMove}
+        onMouseUp={handleStageMouseUp}
         onTouchStart={handlePanStart}
-        onTouchMove={handlePanMove}
-        onTouchEnd={handlePanEnd}
-        onTouchCancel={handlePanEnd}
+        onTouchMove={handleStageTouchMove}
+        onTouchEnd={handleStageTouchEnd}
+        onTouchCancel={handleStageTouchCancel}
+        onMouseLeave={handlePointerLeave}
         onWheel={handleWheel}
       >
         <Layer>
@@ -578,6 +936,18 @@ export function Canvas({ canvasId }: CanvasProps) {
           </Group>
         </Layer>
       </Stage>
+      <div className="canvas-cursors-layer">
+        {remoteCursorPositions.map((cursor) => (
+          <Cursor
+            key={cursor.userId}
+            x={cursor.screenX}
+            y={cursor.screenY}
+            color={cursor.color}
+            label={cursor.name}
+          />
+        ))}
+      </div>
+      <PresencePanel users={presenceUsers} />
     </div>
   )
 }
