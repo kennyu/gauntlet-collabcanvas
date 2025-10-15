@@ -28,9 +28,8 @@ RLS: enabled
 Notes:
 Constrains enforce objects stay within canvas bounds and minimum size.
 Indexing on canvas_id is recommended for queries and RLS performance if not present.
-Trigger `canvas_objects_notify` emits broadcast events for INSERT/UPDATE/DELETE via the
-`canvas-admin-broadcast` edge function so clients can subscribe to
-`canvas:{canvas_id}:objects`.
+Enable Supabase Realtime replication for this table so clients can subscribe to
+`postgres_changes` on `canvas_id`.
 ---
 canvas_members
 Purpose: Membership roles for users on canvases.
@@ -55,40 +54,3 @@ RLS: enabled
 Notes:
 Small table intended for presence; consider TTL cleanup jobs for stale rows.
 ---
-// Edge Function: canvas-admin-broadcast
-// Uses Deno.serve per guidelines. No external dependencies.
-Deno.serve(async (req: Request) => {
-  try {
-    if (req.method !== 'POST') return new Response(JSON.stringify({ error: 'Only POST allowed' }), { status: 405, headers: { 'Content-Type': 'application/json' } });
-
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-    const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    if (!supabaseServiceKey || !supabaseUrl) return new Response(JSON.stringify({ error: 'Service role key or SUPABASE_URL not configured' }), { status: 500, headers: { 'Content-Type': 'application/json' } });
-
-    const body = await req.json().catch(() => null);
-    const { canvas_id, event, payload } = body || {};
-    if (!canvas_id || !event) return new Response(JSON.stringify({ error: 'canvas_id and event are required' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
-
-    const topic = `canvas:${canvas_id}:objects`;
-
-    // Supabase Realtime HTTP broadcast endpoint
-    const broadcastUrl = `${supabaseUrl}/realtime/v1/broadcast`;
-
-    const resp = await fetch(broadcastUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': supabaseServiceKey,
-        'Authorization': `Bearer ${supabaseServiceKey}`,
-      },
-      body: JSON.stringify({ topic, event, payload }),
-    });
-
-    const text = await resp.text();
-    const headers = { 'Content-Type': 'application/json' };
-    return new Response(text, { status: resp.status, headers });
-  } catch (err) {
-    console.error('Function error', err);
-    return new Response(JSON.stringify({ error: String(err) }), { status: 500, headers: { 'Content-Type': 'application/json' } });
-  }
-});

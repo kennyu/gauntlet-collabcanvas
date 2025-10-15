@@ -85,62 +85,74 @@ export function Canvas({ canvasId }: CanvasProps) {
   useEffect(() => {
     const channel = supabase.channel(`canvas:${canvasId}:objects`)
 
-    const handleBroadcast = (payload: { event: string; payload: any }) => {
-      log('Broadcast received', payload.event, payload.payload)
-      const { payload: body } = payload
-      const record: RectangleRecord | undefined = body?.record
-      if (!record) {
-        log('Broadcast payload missing record')
-        return
-      }
-      const incoming = mapRecordToRectangle(record, canvasId)
-      setRectangles((current) => {
-        const existingIndex = current.findIndex((item) => item.id === incoming.id)
-        if (existingIndex === -1) {
-          return [...current, incoming].sort(
-            (a, b) => parseTimestamp(a.updatedAt) - parseTimestamp(b.updatedAt),
+    channel.on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'canvas_objects',
+        filter: `canvas_id=eq.${canvasId}`,
+      },
+      (payload) => {
+        const eventType = payload.eventType
+        log('Realtime change received', eventType, {
+          new: payload.new,
+          old: payload.old,
+        })
+
+        if (eventType === 'DELETE') {
+          const record = payload.old as RectangleRecord | undefined
+          if (!record?.id) {
+            log('Delete payload missing record id')
+            return
+          }
+          setRectangles((current) =>
+            current.filter((item) => item.id !== record.id),
           )
-        }
-
-        const existing = current[existingIndex]
-        const existingTs = parseTimestamp(existing.updatedAt)
-        const incomingTs = parseTimestamp(incoming.updatedAt)
-        if (incomingTs < existingTs) {
-          log('Ignoring stale broadcast', {
-            id: incoming.id,
-            existingTs,
-            incomingTs,
-          })
-          return current
-        }
-        const next = [...current]
-        next[existingIndex] = incoming
-        return next.sort(
-          (a, b) => parseTimestamp(a.updatedAt) - parseTimestamp(b.updatedAt),
-        )
-      })
-    }
-
-    channel
-      .on('broadcast', { event: 'INSERT' }, handleBroadcast)
-      .on('broadcast', { event: 'UPDATE' }, handleBroadcast)
-      .on('broadcast', { event: 'DELETE' }, (payload) => {
-        log('Broadcast received DELETE', payload.payload)
-        const record: RectangleRecord | undefined = payload.payload?.record
-        if (!record) {
           return
         }
-        setRectangles((current) =>
-          current.filter((item) => item.id !== record.id),
-        )
-      })
+
+        const record = payload.new as RectangleRecord | undefined
+        if (!record) {
+          log('Change payload missing record')
+          return
+        }
+
+        const incoming = mapRecordToRectangle(record, canvasId)
+        setRectangles((current) => {
+          const existingIndex = current.findIndex((item) => item.id === incoming.id)
+          if (existingIndex === -1) {
+            return [...current, incoming].sort(
+              (a, b) => parseTimestamp(a.updatedAt) - parseTimestamp(b.updatedAt),
+            )
+          }
+
+          const existing = current[existingIndex]
+          const existingTs = parseTimestamp(existing.updatedAt)
+          const incomingTs = parseTimestamp(incoming.updatedAt)
+          if (incomingTs < existingTs) {
+            log('Ignoring stale change', {
+              id: incoming.id,
+              existingTs,
+              incomingTs,
+            })
+            return current
+          }
+          const next = [...current]
+          next[existingIndex] = incoming
+          return next.sort(
+            (a, b) => parseTimestamp(a.updatedAt) - parseTimestamp(b.updatedAt),
+          )
+        })
+      },
+    )
 
     channel.subscribe((status) => {
-      log('Broadcast channel status', status)
+      log('Realtime channel status', status)
     })
 
     return () => {
-      log('Removing broadcast channel', { canvasId })
+      log('Removing realtime channel', { canvasId })
       supabase.removeChannel(channel)
     }
   }, [canvasId])
