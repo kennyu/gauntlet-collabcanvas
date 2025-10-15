@@ -47,6 +47,11 @@ const mapRecordToRectangle = (
 const parseTimestamp = (value: string | null | undefined) =>
   value ? Date.parse(value) || 0 : 0
 
+const log = (...args: unknown[]) => {
+  // eslint-disable-next-line no-console
+  console.log('[CanvasSync]', ...args)
+}
+
 type CanvasProps = {
   canvasId: string
 }
@@ -68,7 +73,9 @@ export function Canvas({ canvasId }: CanvasProps) {
 
   useEffect(() => {
     const fetchRectangles = async () => {
+      log('Loading rectangles from database', { canvasId })
       const records = await loadRectangles(canvasId)
+      log('Loaded rectangles response', records.length)
       setRectangles(records.map((record) => mapRecordToRectangle(record, canvasId)))
     }
 
@@ -78,6 +85,9 @@ export function Canvas({ canvasId }: CanvasProps) {
   useEffect(() => {
     const channel = supabase
       .channel(`canvas-objects-${canvasId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'canvas_objects', filter: `canvas_id=eq.${canvasId}` }, (payload) => {
+        log('Realtime event received', payload.eventType, payload.new)
+      })
       .on(
         'postgres_changes',
         {
@@ -89,10 +99,12 @@ export function Canvas({ canvasId }: CanvasProps) {
         (payload) => {
           const record = payload.new as RectangleRecord | null
           if (!record) {
+            log('Realtime INSERT payload missing record')
             return
           }
           setRectangles((current) => {
             const incoming = mapRecordToRectangle(record, canvasId)
+            log('Applying realtime INSERT', incoming)
             const next = current.some((item) => item.id === incoming.id)
               ? current.map((item) => (item.id === incoming.id ? incoming : item))
               : [...current, incoming]
@@ -113,8 +125,10 @@ export function Canvas({ canvasId }: CanvasProps) {
         (payload) => {
           const record = payload.new as RectangleRecord | null
           if (!record) {
+            log('Realtime UPDATE payload missing record')
             return
           }
+          log('Applying realtime UPDATE', record)
           setRectangles((current) => {
             const incoming = mapRecordToRectangle(record, canvasId)
             return current
@@ -124,6 +138,11 @@ export function Canvas({ canvasId }: CanvasProps) {
                 }
                 const existingTs = parseTimestamp(item.updatedAt)
                 const incomingTs = parseTimestamp(incoming.updatedAt)
+                log('Comparing timestamps', {
+                  id: item.id,
+                  existingTs,
+                  incomingTs,
+                })
                 return incomingTs >= existingTs ? incoming : item
               })
               .sort(
@@ -134,9 +153,12 @@ export function Canvas({ canvasId }: CanvasProps) {
         },
       )
 
-    channel.subscribe()
+    channel.subscribe((status) => {
+      log('Realtime channel status', status)
+    })
 
     return () => {
+      log('Removing realtime channel', { canvasId })
       supabase.removeChannel(channel)
     }
   }, [canvasId])
