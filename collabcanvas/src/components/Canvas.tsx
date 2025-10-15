@@ -83,82 +83,64 @@ export function Canvas({ canvasId }: CanvasProps) {
   }, [canvasId])
 
   useEffect(() => {
-    const channel = supabase
-      .channel(`canvas-objects-${canvasId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'canvas_objects', filter: `canvas_id=eq.${canvasId}` }, (payload) => {
-        log('Realtime event received', payload.eventType, payload.new)
+    const channel = supabase.channel(`canvas:${canvasId}:objects`)
+
+    const handleBroadcast = (payload: { event: string; payload: any }) => {
+      log('Broadcast received', payload.event, payload.payload)
+      const { payload: body } = payload
+      const record: RectangleRecord | undefined = body?.record
+      if (!record) {
+        log('Broadcast payload missing record')
+        return
+      }
+      const incoming = mapRecordToRectangle(record, canvasId)
+      setRectangles((current) => {
+        const existingIndex = current.findIndex((item) => item.id === incoming.id)
+        if (existingIndex === -1) {
+          return [...current, incoming].sort(
+            (a, b) => parseTimestamp(a.updatedAt) - parseTimestamp(b.updatedAt),
+          )
+        }
+
+        const existing = current[existingIndex]
+        const existingTs = parseTimestamp(existing.updatedAt)
+        const incomingTs = parseTimestamp(incoming.updatedAt)
+        if (incomingTs < existingTs) {
+          log('Ignoring stale broadcast', {
+            id: incoming.id,
+            existingTs,
+            incomingTs,
+          })
+          return current
+        }
+        const next = [...current]
+        next[existingIndex] = incoming
+        return next.sort(
+          (a, b) => parseTimestamp(a.updatedAt) - parseTimestamp(b.updatedAt),
+        )
       })
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'canvas_objects',
-          filter: `canvas_id=eq.${canvasId}`,
-        },
-        (payload) => {
-          const record = payload.new as RectangleRecord | null
-          if (!record) {
-            log('Realtime INSERT payload missing record')
-            return
-          }
-          setRectangles((current) => {
-            const incoming = mapRecordToRectangle(record, canvasId)
-            log('Applying realtime INSERT', incoming)
-            const next = current.some((item) => item.id === incoming.id)
-              ? current.map((item) => (item.id === incoming.id ? incoming : item))
-              : [...current, incoming]
-            return next.sort(
-              (a, b) => parseTimestamp(a.updatedAt) - parseTimestamp(b.updatedAt),
-            )
-          })
-        },
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'canvas_objects',
-          filter: `canvas_id=eq.${canvasId}`,
-        },
-        (payload) => {
-          const record = payload.new as RectangleRecord | null
-          if (!record) {
-            log('Realtime UPDATE payload missing record')
-            return
-          }
-          log('Applying realtime UPDATE', record)
-          setRectangles((current) => {
-            const incoming = mapRecordToRectangle(record, canvasId)
-            return current
-              .map((item) => {
-                if (item.id !== incoming.id) {
-                  return item
-                }
-                const existingTs = parseTimestamp(item.updatedAt)
-                const incomingTs = parseTimestamp(incoming.updatedAt)
-                log('Comparing timestamps', {
-                  id: item.id,
-                  existingTs,
-                  incomingTs,
-                })
-                return incomingTs >= existingTs ? incoming : item
-              })
-              .sort(
-                (a, b) =>
-                  parseTimestamp(a.updatedAt) - parseTimestamp(b.updatedAt),
-              )
-          })
-        },
-      )
+    }
+
+    channel
+      .on('broadcast', { event: 'INSERT' }, handleBroadcast)
+      .on('broadcast', { event: 'UPDATE' }, handleBroadcast)
+      .on('broadcast', { event: 'DELETE' }, (payload) => {
+        log('Broadcast received DELETE', payload.payload)
+        const record: RectangleRecord | undefined = payload.payload?.record
+        if (!record) {
+          return
+        }
+        setRectangles((current) =>
+          current.filter((item) => item.id !== record.id),
+        )
+      })
 
     channel.subscribe((status) => {
-      log('Realtime channel status', status)
+      log('Broadcast channel status', status)
     })
 
     return () => {
-      log('Removing realtime channel', { canvasId })
+      log('Removing broadcast channel', { canvasId })
       supabase.removeChannel(channel)
     }
   }, [canvasId])
