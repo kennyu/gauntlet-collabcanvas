@@ -1,0 +1,34 @@
+﻿{
+    "name":  "gauntlet-ai-week1",
+    "packages":  [
+                     {
+                         "name":  "collabcanvas",
+                         "scripts":  [
+                                         "dev",
+                                         "build",
+                                         "preview",
+                                         "lint",
+                                         "format",
+                                         "format:check",
+                                         "memory:serve"
+                                     ],
+                         "src":  [
+                                     "src/main.tsx",
+                                     "src/App.tsx",
+                                     "src/components/Canvas.tsx",
+                                     "src/lib/supabase.ts"
+                                 ],
+                         "config":  [
+                                        "eslint.config.js",
+                                        "vite.config.ts",
+                                        "tsconfig.app.json",
+                                        "tsconfig.node.json",
+                                        "package.json"
+                                    ],
+                         "dist":  [
+                                      "dist/"
+                                  ],
+                         "notes":  "Vite + React 19 + Konva + Supabase"
+                     }
+                 ]
+}

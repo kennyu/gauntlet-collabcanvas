@@ -6,14 +6,14 @@
 ## Phase 1: Foundation & Setup (Hours 0-5)
 
 ### 1.1 Project Initialization
-- [x] **Task 1.1.1:** Create new React project with Vite + TypeScript
+- [ ] **Task 1.1.1:** Create new React project with Vite + TypeScript
   - Initialize project: `npm create vite@latest collabcanvas -- --template react-ts`
   - Install base dependencies
   - Configure TypeScript strict mode
   - Set up ESLint and Prettier
   - **Validation:** Project runs with `npm run dev`
 
-- [x] **Task 1.1.2:** Install core dependencies
+- [ ] **Task 1.1.2:** Install core dependencies
   ```bash
   npm install konva react-konva
   npm install @supabase/supabase-js
@@ -21,7 +21,7 @@
   ```
   - **Validation:** All packages installed without conflicts
 
-- [x] **Task 1.1.3:** Set up Git repository
+- [ ] **Task 1.1.3:** Set up Git repository
   - Initialize Git repo
   - Create `.gitignore` (include `.env`)
   - Create initial commit
@@ -29,7 +29,7 @@
   - **Validation:** Repository visible on GitHub
 
 ### 1.2 Supabase Configuration
-- [X] **Task 1.2.1:** Create Supabase project
+- [ ] **Task 1.2.1:** Create Supabase project
   - Sign up for Supabase account
   - Create new project
   - Note project URL and anon key
@@ -41,7 +41,7 @@
   - Configure redirect URLs for localhost and production
   - **Validation:** OAuth settings saved in dashboard
 
-- [x] **Task 1.2.3:** Create database schema
+- [ ] **Task 1.2.3:** Create database schema
   - Run SQL in Supabase SQL Editor:
   ```sql
   CREATE TABLE canvas_objects (
@@ -66,7 +66,7 @@
   ```
   - **Validation:** Table visible in Table Editor
 
-- [x] **Task 1.2.4:** Enable Row Level Security (RLS)
+- [ ] **Task 1.2.4:** Enable Row Level Security (RLS)
   - Enable RLS on `canvas_objects` table
   - Create policy: Allow authenticated users to SELECT
   - Create policy: Allow authenticated users to INSERT
@@ -79,21 +79,21 @@
   - **Validation:** Realtime toggle shows "enabled"
 
 ### 1.3 Environment Setup
-- [x] **Task 1.3.1:** Create environment configuration
+- [ ] **Task 1.3.1:** Create environment configuration
   - Create `.env.local` file
   - Add Supabase URL: `VITE_SUPABASE_URL=`
   - Add Supabase anon key: `VITE_SUPABASE_ANON_KEY=`
   - Create `.env.example` template
   - **Validation:** Environment variables load in app
 
-- [x] **Task 1.3.2:** Create Supabase client
+- [ ] **Task 1.3.2:** Create Supabase client
   - Create `src/lib/supabase.ts`
   - Initialize Supabase client with env variables
   - Export typed client
   - **Validation:** No TypeScript errors
 
 ### 1.4 Initial Deployment
-- [x] **Task 1.4.1:** Deploy to Vercel
+- [ ] **Task 1.4.1:** Deploy to Vercel
   - Connect GitHub repo to Vercel
   - Configure environment variables in Vercel
   - Deploy initial version
@@ -109,93 +109,93 @@
 ## Phase 2: Canvas Implementation (Hours 5-12)
 
 ### 2.1 Basic Canvas Setup (FR-2)
-- [x] **Task 2.1.1:** Create Canvas component structure
+- [ ] **Task 2.1.1:** Create Canvas component structure
   - Create `src/components/Canvas.tsx`
   - Set up Konva Stage and Layer
   - Configure canvas dimensions (3000x3000)
   - **Validation:** Blank canvas renders
 
-- [x] **Task 2.1.2:** Implement grid background
+- [ ] **Task 2.1.2:** Implement grid background
   - Create grid pattern with 50px squares
   - Use light gray color (#e5e7eb)
   - Render grid as Konva shapes or image
   - **Validation:** Grid visible on canvas
 
-- [x] **Task 2.1.3:** Add pan functionality
+- [ ] **Task 2.1.3:** Add pan functionality
   - Implement mouse drag to pan
   - Track mouse down/move/up events
   - Update stage position on drag
   - **Validation:** Can drag canvas smoothly
 
-- [x] **Task 2.1.4:** Add zoom functionality
+- [ ] **Task 2.1.4:** Add zoom functionality
   - Implement mouse wheel zoom
   - Zoom range: 0.1 (10%) to 5.0 (500%)
   - Center zoom on cursor position
   - **Validation:** Zoom in/out works, centers on cursor
 
-- [x] **Task 2.1.5:** Implement boundary constraints
+- [ ] **Task 2.1.5:** Implement boundary constraints
   - Calculate visible bounds based on zoom/pan
   - Prevent panning beyond canvas edges
   - Clamp pan position to valid range
   - **Validation:** Cannot pan outside canvas bounds
 
 ### 2.2 Rectangle Creation (FR-3)
-- [x] **Task 2.2.1:** Implement click-to-create rectangle
+- [ ] **Task 2.2.1:** Implement click-to-create rectangle
   - Listen for canvas click events
   - Calculate click position in canvas coordinates
   - Create rectangle at cursor position
   - **Validation:** Click creates rectangle
 
-- [x] **Task 2.2.2:** Set up color palette system
+- [ ] **Task 2.2.2:** Set up color palette system
   - Define 8 preset colors array
   - Implement color cycling logic
   - Track current color index
   - **Validation:** Rectangles cycle through colors
 
-- [x] **Task 2.2.3:** Create Rectangle component
+- [ ] **Task 2.2.3:** Create Rectangle component
   - Create `src/components/Rectangle.tsx`
   - Render Konva Rect with props
   - Default size: 100x100px
   - Apply color from palette
   - **Validation:** Rectangles render with correct size/color
 
-- [x] **Task 2.2.4:** Add minimum size enforcement
+- [ ] **Task 2.2.4:** Add minimum size enforcement
   - Validate width/height >= 20px
   - Enforce constraint in creation logic
   - **Validation:** Cannot create rectangle < 20x20px
 
 ### 2.3 Selection & Movement (FR-4)
-- [x] **Task 2.3.1:** Implement rectangle selection
+- [ ] **Task 2.3.1:** Implement rectangle selection
   - Add onClick handler to rectangles
   - Track selected rectangle ID in state
   - Render 2px blue border on selected rectangle
   - **Validation:** Clicking rectangle shows selection border
 
-- [x] **Task 2.3.2:** Implement deselection
+- [ ] **Task 2.3.2:** Implement deselection
   - Add onClick handler to canvas background
   - Clear selected ID on background click
   - **Validation:** Clicking empty space deselects
 
-- [x] **Task 2.3.3:** Implement drag movement
+- [ ] **Task 2.3.3:** Implement drag movement
   - Enable draggable on Konva Rect
   - Track drag position updates
   - Update rectangle state on drag
   - **Validation:** Can drag rectangles smoothly
 
-- [x] **Task 2.3.4:** Add movement boundary constraints
+- [ ] **Task 2.3.4:** Add movement boundary constraints
   - Calculate rectangle bounds during drag
   - Prevent rectangle center from leaving canvas
   - Clamp position to valid range
   - **Validation:** Rectangle stays within canvas bounds
 
 ### 2.4 Local State Management
-- [x] **Task 2.4.1:** Create state management structure
+- [ ] **Task 2.4.1:** Create state management structure
   - Define Rectangle interface/type
   - Create rectangles state array
   - Implement add/update/select operations
   - **Validation:** State updates trigger re-renders
 
-- [x] **Task 2.4.2:** Implement optimistic updates
+- [ ] **Task 2.4.2:** Implement optimistic updates
   - Update local state immediately on actions
   - Don't wait for database confirmation
   - **Validation:** Actions feel instant, no lag
@@ -205,72 +205,72 @@
 ## Phase 3: Real-Time Collaboration (Hours 12-20)
 
 ### 3.1 Authentication (FR-1)
-- [x] **Task 3.1.1:** Create Auth component
+- [ ] **Task 3.1.1:** Create Auth component
   - Create `src/components/Auth.tsx`
   - Use Supabase Auth UI components
   - Configure Google and GitHub providers
   - **Validation:** Auth UI renders
 
-- [x] **Task 3.1.2:** Implement auth state management
+- [ ] **Task 3.1.2:** Implement auth state management
   - Listen to auth state changes
   - Store user session in state
   - Handle sign in/out events
   - **Validation:** User object available after login
 
-- [x] **Task 3.1.3:** Add persistent sessions
+- [ ] **Task 3.1.3:** Add persistent sessions
   - Configure Supabase session persistence
   - Auto-restore session on page load
   - **Validation:** User stays logged in after refresh
 
-- [x] **Task 3.1.4:** Implement auth routing
+- [ ] **Task 3.1.4:** Implement auth routing
   - Show Auth component if not logged in
   - Show Canvas component if logged in
   - Auto-redirect after successful auth
   - **Validation:** Correct component shows based on auth state
 
 ### 3.2 Database Integration (FR-9)
-- [x] **Task 3.2.1:** Create database operations module
+- [ ] **Task 3.2.1:** Create database operations module
   - Create `src/lib/database.ts`
   - Implement `createRectangle()` function
   - Implement `updateRectangle()` function
   - Implement `loadRectangles()` function
   - **Validation:** Functions execute without errors
 
-- [x] **Task 3.2.2:** Integrate create operations
+- [ ] **Task 3.2.2:** Integrate create operations
   - Call `createRectangle()` when user creates rectangle
   - Pass user ID from auth context
   - Handle success/error responses
   - **Validation:** Rectangles saved to database
 
-- [x] **Task 3.2.3:** Integrate update operations
+- [ ] **Task 3.2.3:** Integrate update operations
   - Call `updateRectangle()` when user moves rectangle
   - Debounce updates to avoid excessive writes
   - **Validation:** Position updates saved to database
 
-- [x] **Task 3.2.4:** Implement initial state load
+- [ ] **Task 3.2.4:** Implement initial state load
   - Load all rectangles on component mount
   - Populate local state with database data
   - **Validation:** Existing rectangles load on page refresh
 
 ### 3.3 Real-Time Synchronization (FR-5)
-- [x] **Task 3.3.1:** Subscribe to INSERT events
+- [ ] **Task 3.3.1:** Subscribe to INSERT events
   - Set up Supabase Realtime subscription
   - Listen for INSERT on `canvas_objects`
   - Add new rectangles to local state
   - **Validation:** User A creates, User B sees new rectangle
 
-- [x] **Task 3.3.2:** Subscribe to UPDATE events
+- [ ] **Task 3.3.2:** Subscribe to UPDATE events
   - Listen for UPDATE on `canvas_objects`
   - Update matching rectangle in local state
   - **Validation:** User A moves, User B sees movement
 
-- [x] **Task 3.3.3:** Implement conflict resolution
+- [ ] **Task 3.3.3:** Implement conflict resolution
   - Use last-write-wins strategy
   - Always apply latest update from database
   - Don't merge conflicting changes
   - **Validation:** Concurrent edits resolve consistently
 
-- [x] **Task 3.3.4:** Add reconnection logic
+- [ ] **Task 3.3.4:** Add reconnection logic
   - Detect connection drops
   - Auto-reconnect when connection restored
   - Reload state after reconnection
@@ -283,67 +283,67 @@
   - **Validation:** Sync latency measured < 100ms
 
 ### 3.4 Multiplayer Cursors (FR-6)
-- [x] **Task 3.4.1:** Set up cursor broadcasting
+- [ ] **Task 3.4.1:** Set up cursor broadcasting
   - Initialize Supabase Broadcast channel
   - Track local cursor position on canvas
   - **Validation:** Broadcast channel connected
 
-- [x] **Task 3.4.2:** Implement cursor position broadcasting
+- [ ] **Task 3.4.2:** Implement cursor position broadcasting
   - Send cursor position every 30ms
   - Include user ID and username in payload
   - Only broadcast when cursor on canvas
   - **Validation:** Cursor positions sent via broadcast
 
-- [x] **Task 3.4.3:** Create Cursor component
+- [ ] **Task 3.4.3:** Create Cursor component
   - Create `src/components/Cursor.tsx`
   - Render SVG cursor with username label
   - Apply user-specific color
   - **Validation:** Cursor renders with correct styling
 
-- [x] **Task 3.4.4:** Receive and display remote cursors
+- [ ] **Task 3.4.4:** Receive and display remote cursors
   - Subscribe to broadcast messages
   - Store remote cursor positions in state
   - Filter out own cursor
   - Render Cursor component for each remote user
   - **Validation:** Remote cursors visible and smooth
 
-- [x] **Task 3.4.5:** Implement cursor cleanup
+- [ ] **Task 3.4.5:** Implement cursor cleanup
   - Remove cursors when users disconnect
   - Handle stale cursor cleanup (no update for 5s)
   - **Validation:** Cursors disappear when users leave
 
-- [x] **Task 3.4.6:** Assign consistent user colors
+- [ ] **Task 3.4.6:** Assign consistent user colors
   - Hash user ID to color index
   - Use same color palette as rectangles
   - Ensure color consistency across sessions
   - **Validation:** Same user always has same color
 
 ### 3.5 Presence Awareness (FR-7)
-- [x] **Task 3.5.1:** Set up Presence tracking
+- [ ] **Task 3.5.1:** Set up Presence tracking
   - Initialize Supabase Presence channel
   - Join presence on auth
   - Leave presence on logout/disconnect
   - **Validation:** Presence channel working
 
-- [x] **Task 3.5.2:** Broadcast user presence
+- [ ] **Task 3.5.2:** Broadcast user presence
   - Send user ID, username, and color on join
   - Update presence metadata as needed
   - **Validation:** Presence data available to other users
 
-- [x] **Task 3.5.3:** Create Presence Panel component
+- [ ] **Task 3.5.3:** Create Presence Panel component
   - Create `src/components/PresencePanel.tsx`
   - Position in top-left corner
   - Display user count
   - **Validation:** Panel renders in correct position
 
-- [x] **Task 3.5.4:** Display online users list
+- [ ] **Task 3.5.4:** Display online users list
   - Subscribe to presence state changes
   - Render list of all online users
   - Show color dot next to each username
   - Highlight current user with "(You)"
   - **Validation:** All users listed with correct colors
 
-- [x] **Task 3.5.5:** Handle presence updates
+- [ ] **Task 3.5.5:** Handle presence updates
   - Update list on user join
   - Update list on user leave
   - Target <200ms update latency
@@ -581,9 +581,9 @@
 ### Core Features (Must Have All ✅):
 - [ ] Authentication with Google OAuth
 - [ ] Authentication with GitHub OAuth
-- [x] Canvas with pan and zoom
-- [x] Rectangle creation
-- [x] Rectangle movement
+- [ ] Canvas with pan and zoom
+- [ ] Rectangle creation
+- [ ] Rectangle movement
 - [ ] Real-time object synchronization
 - [ ] Multiplayer cursors
 - [ ] Presence awareness panel

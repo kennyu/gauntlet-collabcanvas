@@ -27,6 +27,3 @@ dist/
 collabcanvas/node_modules/
 collabcanvas/dist/
 
-# Memory bank data (local only)
-.memory-bank/
-
