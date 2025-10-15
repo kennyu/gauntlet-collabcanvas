@@ -4,8 +4,40 @@ import { supabase } from './supabase'
 type RectangleRow = Database['public']['Tables']['canvas_objects']['Row']
 type RectangleInsert = Database['public']['Tables']['canvas_objects']['Insert']
 type RectangleUpdate = Database['public']['Tables']['canvas_objects']['Update']
+type CanvasRow = Database['public']['Tables']['canvases']['Row']
 
 export type RectangleRecord = RectangleRow
+export type CanvasRecord = CanvasRow
+
+export async function ensureCanvasByName(
+  name: string,
+): Promise<CanvasRecord> {
+  const { data, error } = await supabase
+    .from('canvases')
+    .select('*')
+    .eq('name', name)
+    .limit(1)
+
+  if (error) {
+    throw error
+  }
+
+  if (data && data.length > 0) {
+    return data[0]
+  }
+
+  const { data: inserted, error: insertError } = await supabase
+    .from('canvases')
+    .insert({ name })
+    .select()
+    .single()
+
+  if (insertError) {
+    throw insertError
+  }
+
+  return inserted
+}
 
 export async function loadRectangles(
   canvasId: string,

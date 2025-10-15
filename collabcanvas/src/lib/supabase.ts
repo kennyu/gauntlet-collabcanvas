@@ -15,12 +15,12 @@ export type Database = {
     Tables: {
       canvas_objects: {
         Row: {
+          canvas_id: string
           color: string
           created_at: string | null
           created_by: string | null
           height: number
           id: string
-          canvas_id: string
           type: string
           updated_at: string | null
           width: number
@@ -59,8 +59,35 @@ export type Database = {
             columns: ['created_by']
             referencedRelation: 'users'
             referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'canvas_objects_canvas_id_fkey'
+            columns: ['canvas_id']
+            referencedRelation: 'canvases'
+            referencedColumns: ['id']
           }
         ]
+      }
+      canvases: {
+        Row: {
+          created_at: string | null
+          id: string
+          name: string
+          owner_user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          name: string
+          owner_user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          name?: string
+          owner_user_id?: string | null
+        }
+        Relationships: []
       }
     }
     Views: {

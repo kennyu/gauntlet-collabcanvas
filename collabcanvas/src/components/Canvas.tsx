@@ -59,10 +59,10 @@ const generateRectangleId = () => {
 }
 
 type CanvasProps = {
-  canvasId?: string
+  canvasId: string
 }
 
-export function Canvas({ canvasId = 'default' }: CanvasProps) {
+export function Canvas({ canvasId }: CanvasProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const { user } = useAuth()
   const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 })
