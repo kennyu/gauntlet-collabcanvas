@@ -26,6 +26,7 @@ export type Database = {
           width: number
           x: number
           y: number
+          canvas_id: string | null
         }
         Insert: {
           color: string
@@ -39,6 +40,7 @@ export type Database = {
           width: number
           x: number
           y: number
+          canvas_id?: string | null
         }
         Update: {
           color?: string
@@ -52,6 +54,7 @@ export type Database = {
           width?: number
           x?: number
           y?: number
+          canvas_id?: string | null
         }
         Relationships: [
           {

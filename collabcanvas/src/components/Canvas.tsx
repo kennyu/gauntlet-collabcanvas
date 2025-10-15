@@ -80,6 +80,25 @@ export function Canvas({ canvasId }: CanvasProps) {
   const stageOriginRef = useRef({ x: 0, y: 0 })
   const hasMovedRef = useRef(false)
 
+  useEffect(() => {
+    debugLog('Canvas mounted', { userId })
+    return () => {
+      debugLog('Canvas unmounted')
+    }
+  }, [userId])
+
+  useEffect(() => {
+    isMountedRef.current = true
+    return () => {
+      isMountedRef.current = false
+      const channel = channelRef.current
+      if (channel) {
+        void channel.unsubscribe()
+        channelRef.current = null
+      }
+    }
+  }, [])
+
   const computePanBounds = useCallback(
     (nextScale = scale) => {
       const scaledWidth = WORKSPACE_SIZE * nextScale
@@ -123,6 +142,60 @@ export function Canvas({ canvasId }: CanvasProps) {
     return lines
   }, [])
 
+  const applyRectangleUpdate = useCallback((incoming: CanvasRectangle) => {
+    if (incoming.canvasId !== ACTIVE_CANVAS_ID) {
+      debugLog('Ignoring update for foreign canvas', incoming)
+      return
+    }
+    setRectangles((current) => {
+      const index = current.findIndex((item) => item.id === incoming.id)
+      if (index === -1) {
+        debugLog('Adding rectangle from payload', incoming)
+        return sortRectangles([...current, incoming])
+      }
+      const existing = current[index]
+      const incomingTimestamp = timestampOrZero(incoming.updatedAt)
+      const existingTimestamp = timestampOrZero(existing.updatedAt)
+      if (incomingTimestamp < existingTimestamp) {
+        debugLog('Skipping stale rectangle update', {
+          incoming,
+          incomingTimestamp,
+          existingTimestamp,
+        })
+        return current
+      }
+      debugLog('Applying rectangle update', incoming)
+      const next = [...current]
+      next[index] = { ...existing, ...incoming }
+      return sortRectangles(next)
+    })
+  }, [])
+
+  const refreshRectangles = useCallback(async () => {
+    try {
+      debugLog('Requesting rectangles from database')
+      const rows = await loadRectangles()
+      if (!isMountedRef.current) {
+        return
+      }
+      const mapped = rows.map(mapRowToRectangle)
+      debugLog('Loaded rectangles from database', mapped)
+      setRectangles(sortRectangles(mapped))
+    } catch (error) {
+      debugLog('Failed to load rectangles', error)
+      console.error('Failed to load rectangles from Supabase', error)
+    }
+  }, [])
+
+  useEffect(() => {
+    void refreshRectangles()
+  }, [refreshRectangles])
+
+  useEffect(() => {
+    const computed = rectangles.length % RECT_COLORS.length
+    setColorIndex((current) => (current === computed ? current : computed))
+  }, [rectangles.length])
+
   const clampRectanglePosition = useCallback(
     (rectangle: CanvasRectangle, position: { x: number; y: number }) => ({
       x: Math.max(0, Math.min(WORKSPACE_SIZE - rectangle.width, position.x)),
@@ -130,16 +203,24 @@ export function Canvas({ canvasId }: CanvasProps) {
     }),
     [],
   )
-
-  const updateRectanglePosition = useCallback(
+  const commitRectanglePosition = useCallback(
     (id: string, position: { x: number; y: number }) => {
-      let clamped: { x: number; y: number } | undefined
+      let result:
+        | {
+            clamped: { x: number; y: number }
+            timestamp: string
+            canvasId: string
+          }
+        | undefined
       setRectangles((current) =>
         current.map((item) => {
           if (item.id !== id) {
             return item
           }
-          clamped = clampRectanglePosition(item, position)
+          const clamped = clampRectanglePosition(item, position)
+          const timestamp = new Date().toISOString()
+          const canvasId = item.canvasId ?? ACTIVE_CANVAS_ID
+          result = { clamped, timestamp, canvasId }
           return {
             ...item,
             ...clamped,
@@ -147,9 +228,52 @@ export function Canvas({ canvasId }: CanvasProps) {
           }
         }),
       )
-      return clamped
+      if (result) {
+        debugLog('Committed rectangle position', { id, ...result })
+      } else {
+        debugLog('Commit skipped, rectangle not found', { id })
+      }
+      return result
     },
     [clampRectanglePosition],
+  )
+
+  const persistRectanglePosition = useCallback(
+    (
+      id: string,
+      position: { x: number; y: number },
+      timestamp: string,
+      canvasId: string,
+    ) => {
+      debugLog('Persisting rectangle position', {
+        id,
+        position,
+        timestamp,
+        canvasId,
+      })
+      void (async () => {
+        try {
+          const updated = await updateRectangleRecord(id, {
+            x: position.x,
+            y: position.y,
+            updatedAt: timestamp,
+            canvasId,
+          })
+          if (!isMountedRef.current) {
+            return
+          }
+          debugLog('Persisted rectangle update response', updated)
+          applyRectangleUpdate(mapRowToRectangle(updated))
+        } catch (error) {
+          console.error(`Failed to persist rectangle ${id}`, error)
+          if (isMountedRef.current) {
+            debugLog('Reloading rectangles after failed persist', { id, error })
+            void refreshRectangles()
+          }
+        }
+      })()
+    },
+    [applyRectangleUpdate, refreshRectangles],
   )
 
   const clampStagePosition = useCallback(
@@ -596,6 +720,72 @@ export function Canvas({ canvasId }: CanvasProps) {
     [clampStagePosition, scale],
   )
 
+  useEffect(() => {
+    debugLog('Setting up realtime channel')
+    const channel = supabase
+      .channel('realtime-canvas-objects')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'canvas_objects',
+        },
+        (payload: RealtimePostgresInsertPayload<CanvasObjectRow>) => {
+          const row = payload.new
+          if (!row || row.type !== 'rectangle') {
+            return
+          }
+          debugLog('Realtime INSERT received', row)
+          applyRectangleUpdate(mapRowToRectangle(row))
+        },
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'canvas_objects',
+        },
+        (payload: RealtimePostgresUpdatePayload<CanvasObjectRow>) => {
+          const row = payload.new
+          if (!row || row.type !== 'rectangle') {
+            return
+          }
+          debugLog('Realtime UPDATE received', row)
+          applyRectangleUpdate(mapRowToRectangle(row))
+        },
+      )
+      .subscribe((status, err) => {
+        if (status === 'SUBSCRIBED') {
+          debugLog('Realtime channel subscribed')
+          if (hadChannelErrorRef.current) {
+            hadChannelErrorRef.current = false
+            void refreshRectangles()
+          }
+        } else if (
+          status === 'CHANNEL_ERROR' ||
+          status === 'TIMED_OUT' ||
+          status === 'CLOSED'
+        ) {
+          debugLog('Realtime channel issue detected', { status, error: err })
+          hadChannelErrorRef.current = true
+        }
+        if (err) {
+          debugLog('Realtime channel error details', err)
+        }
+      })
+
+    channelRef.current = channel
+    debugLog('Realtime channel created', { topic: channel.topic })
+
+    return () => {
+      channelRef.current = null
+      debugLog('Realtime channel cleanup unsubscribing', { topic: channel.topic })
+      void channel.unsubscribe()
+    }
+  }, [applyRectangleUpdate, refreshRectangles])
+
   return (
     <div
       ref={containerRef}
@@ -633,8 +823,8 @@ export function Canvas({ canvasId }: CanvasProps) {
                 rectangle={rectangle}
                 isSelected={rectangle.id === selectedId}
                 onSelect={() => setSelectedId(rectangle.id)}
-                onDragMove={(event) =>
-                  updateRectanglePosition(rectangle.id, {
+                onDragMove={(event) => {
+                  const clamped = clampRectanglePosition(rectangle, {
                     x: event.target.x(),
                     y: event.target.y(),
                   })
