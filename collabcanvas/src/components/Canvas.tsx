@@ -37,6 +37,7 @@ export function Canvas() {
   const [scale, setScale] = useState(1)
   const [rectangles, setRectangles] = useState<CanvasRectangle[]>([])
   const [colorIndex, setColorIndex] = useState(0)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
   const pointerOriginRef = useRef({ x: 0, y: 0 })
   const stageOriginRef = useRef({ x: 0, y: 0 })
   const hasMovedRef = useRef(false)
@@ -83,6 +84,34 @@ export function Canvas() {
     }
     return lines
   }, [])
+
+  const clampRectanglePosition = useCallback(
+    (rectangle: CanvasRectangle, position: { x: number; y: number }) => ({
+      x: Math.max(0, Math.min(WORKSPACE_SIZE - rectangle.width, position.x)),
+      y: Math.max(0, Math.min(WORKSPACE_SIZE - rectangle.height, position.y)),
+    }),
+    [],
+  )
+
+  const updateRectanglePosition = useCallback(
+    (id: string, position: { x: number; y: number }) => {
+      let clamped: { x: number; y: number } | undefined
+      setRectangles((current) =>
+        current.map((item) => {
+          if (item.id !== id) {
+            return item
+          }
+          clamped = clampRectanglePosition(item, position)
+          return {
+            ...item,
+            ...clamped,
+          }
+        }),
+      )
+      return clamped
+    },
+    [clampRectanglePosition],
+  )
 
   const clampStagePosition = useCallback(
     (next: { x: number; y: number }, nextScale = scale) => {
@@ -147,10 +176,11 @@ export function Canvas() {
 
       const color = RECT_COLORS[colorIndex]
 
+      const id = generateRectangleId()
       setRectangles((current) => [
         ...current,
         {
-          id: generateRectangleId(),
+          id,
           x: clampedX,
           y: clampedY,
           width,
@@ -158,6 +188,7 @@ export function Canvas() {
           color,
         },
       ])
+      setSelectedId(id)
       setColorIndex((index) => (index + 1) % RECT_COLORS.length)
     },
     [colorIndex],
@@ -291,10 +322,16 @@ export function Canvas() {
         return
       }
 
+      if (selectedId) {
+        setSelectedId(null)
+        hasMovedRef.current = false
+        return
+      }
+
       createRectangleAt(pointer)
       hasMovedRef.current = false
     },
-    [createRectangleAt, isPanning],
+    [createRectangleAt, isPanning, selectedId],
   )
 
   const handleWheel = useCallback(
@@ -366,7 +403,24 @@ export function Canvas() {
           <Group listening={false}>{gridLines}</Group>
           <Group>
             {rectangles.map((rectangle) => (
-              <Rectangle key={rectangle.id} rectangle={rectangle} />
+              <Rectangle
+                key={rectangle.id}
+                rectangle={rectangle}
+                isSelected={rectangle.id === selectedId}
+                onSelect={() => setSelectedId(rectangle.id)}
+                onDragMove={(event) =>
+                  updateRectanglePosition(rectangle.id, {
+                    x: event.target.x(),
+                    y: event.target.y(),
+                  })
+                }
+                onDragEnd={(event) =>
+                  updateRectanglePosition(rectangle.id, {
+                    x: event.target.x(),
+                    y: event.target.y(),
+                  })
+                }
+              />
             ))}
           </Group>
         </Layer>
