@@ -15,7 +15,6 @@ export type Database = {
     Tables: {
       canvas_objects: {
         Row: {
-          canvas_id: string
           color: string
           created_at: string | null
           created_by: string | null
@@ -34,13 +33,12 @@ export type Database = {
           created_by?: string | null
           height: number
           id?: string
-          canvas_id: string
           type?: string
           updated_at?: string | null
           width: number
           x: number
           y: number
-          canvas_id?: string | null
+          canvas_id: string
         }
         Update: {
           color?: string
@@ -48,7 +46,6 @@ export type Database = {
           created_by?: string | null
           height?: number
           id?: string
-          canvas_id?: string
           type?: string
           updated_at?: string | null
           width?: number

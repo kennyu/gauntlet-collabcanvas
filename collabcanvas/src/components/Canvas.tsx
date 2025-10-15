@@ -2,20 +2,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Group, Layer, Line, Rect, Stage } from 'react-konva'
 import type { KonvaEventObject } from 'konva/lib/Node'
 import type { Stage as KonvaStage } from 'konva/lib/Stage'
-import type {
-  RealtimeChannel,
-  RealtimePostgresInsertPayload,
-  RealtimePostgresUpdatePayload,
-} from '@supabase/supabase-js'
 import { Rectangle, type CanvasRectangle } from './Rectangle'
 import { useAuth } from '../contexts/AuthContext'
 import {
-  createRectangle as createRectangleRecord,
+  createRectangle,
   loadRectangles,
-  updateRectangle as updateRectangleRecord,
+  updateRectangle,
   type RectangleRecord,
 } from '../lib/database'
-import { realtimeSchema, supabase } from '../lib/supabase'
+import { supabase } from '../lib/supabase'
 
 const WORKSPACE_SIZE = 3000
 const GRID_SIZE = 50
@@ -37,6 +32,7 @@ const SCALE_STEP = 1.1
 
 const mapRecordToRectangle = (
   record: RectangleRecord,
+  fallbackCanvasId?: string,
 ): CanvasRectangle => ({
   id: record.id,
   x: record.x,
@@ -44,19 +40,12 @@ const mapRecordToRectangle = (
   width: record.width,
   height: record.height,
   color: record.color,
-  canvasId: record.canvas_id,
+  canvasId: record.canvas_id ?? fallbackCanvasId ?? '',
   updatedAt: record.updated_at ?? record.created_at ?? null,
 })
 
 const parseTimestamp = (value: string | null | undefined) =>
   value ? Date.parse(value) || 0 : 0
-
-const generateRectangleId = () => {
-  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
-    return crypto.randomUUID()
-  }
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
-}
 
 type CanvasProps = {
   canvasId: string
@@ -72,30 +61,116 @@ export function Canvas({ canvasId }: CanvasProps) {
   const [rectangles, setRectangles] = useState<CanvasRectangle[]>([])
   const [colorIndex, setColorIndex] = useState(0)
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [isLoadingRectangles, setIsLoadingRectangles] = useState(true)
-  const [syncError, setSyncError] = useState<string | null>(null)
-  const pendingUpdatesRef = useRef(new Map<string, number>())
-  const realtimeChannelRef = useRef<RealtimeChannel | null>(null)
+
   const pointerOriginRef = useRef({ x: 0, y: 0 })
   const stageOriginRef = useRef({ x: 0, y: 0 })
   const hasMovedRef = useRef(false)
 
   useEffect(() => {
-    debugLog('Canvas mounted', { userId })
-    return () => {
-      debugLog('Canvas unmounted')
+    const fetchRectangles = async () => {
+      const records = await loadRectangles(canvasId)
+      setRectangles(records.map((record) => mapRecordToRectangle(record, canvasId)))
     }
-  }, [userId])
+
+    void fetchRectangles()
+  }, [canvasId])
 
   useEffect(() => {
-    isMountedRef.current = true
+    const channel = supabase
+      .channel(`canvas-objects-${canvasId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'canvas_objects',
+          filter: `canvas_id=eq.${canvasId}`,
+        },
+        (payload) => {
+          const record = payload.new as RectangleRecord | null
+          if (!record) {
+            return
+          }
+          setRectangles((current) => {
+            const incoming = mapRecordToRectangle(record, canvasId)
+            const next = current.some((item) => item.id === incoming.id)
+              ? current.map((item) => (item.id === incoming.id ? incoming : item))
+              : [...current, incoming]
+            return next.sort(
+              (a, b) => parseTimestamp(a.updatedAt) - parseTimestamp(b.updatedAt),
+            )
+          })
+        },
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'canvas_objects',
+          filter: `canvas_id=eq.${canvasId}`,
+        },
+        (payload) => {
+          const record = payload.new as RectangleRecord | null
+          if (!record) {
+            return
+          }
+          setRectangles((current) => {
+            const incoming = mapRecordToRectangle(record, canvasId)
+            return current
+              .map((item) => {
+                if (item.id !== incoming.id) {
+                  return item
+                }
+                const existingTs = parseTimestamp(item.updatedAt)
+                const incomingTs = parseTimestamp(incoming.updatedAt)
+                return incomingTs >= existingTs ? incoming : item
+              })
+              .sort(
+                (a, b) =>
+                  parseTimestamp(a.updatedAt) - parseTimestamp(b.updatedAt),
+              )
+          })
+        },
+      )
+
+    channel.subscribe()
+
     return () => {
-      isMountedRef.current = false
-      const channel = channelRef.current
-      if (channel) {
-        void channel.unsubscribe()
-        channelRef.current = null
+      supabase.removeChannel(channel)
+    }
+  }, [canvasId])
+
+  useEffect(() => {
+    const handleResize = () => {
+      const container = containerRef.current
+      if (container) {
+        setViewportSize({
+          width: container.clientWidth,
+          height: container.clientHeight,
+        })
       }
+    }
+
+    handleResize()
+    window.addEventListener('resize', handleResize)
+    return () => {
+      window.removeEventListener('resize', handleResize)
+    }
+  }, [])
+
+  useEffect(() => {
+    const cancelPan = () => {
+      hasMovedRef.current = false
+      setIsPanning(false)
+    }
+    window.addEventListener('mouseup', cancelPan)
+    window.addEventListener('touchend', cancelPan)
+    window.addEventListener('touchcancel', cancelPan)
+    return () => {
+      window.removeEventListener('mouseup', cancelPan)
+      window.removeEventListener('touchend', cancelPan)
+      window.removeEventListener('touchcancel', cancelPan)
     }
   }, [])
 
@@ -116,6 +191,20 @@ export function Canvas({ canvasId }: CanvasProps) {
     },
     [scale, viewportSize.height, viewportSize.width],
   )
+
+  const clampStagePosition = useCallback(
+    (next: { x: number; y: number }, nextScale = scale) => {
+      const bounds = computePanBounds(nextScale)
+      const clampedX = Math.max(bounds.minX, Math.min(bounds.maxX, next.x))
+      const clampedY = Math.max(bounds.minY, Math.min(bounds.maxY, next.y))
+      return { x: clampedX, y: clampedY }
+    },
+    [computePanBounds, scale],
+  )
+
+  useEffect(() => {
+    setStagePosition((current) => clampStagePosition(current))
+  }, [clampStagePosition])
 
   const gridLines = useMemo(() => {
     const lines = []
@@ -142,345 +231,13 @@ export function Canvas({ canvasId }: CanvasProps) {
     return lines
   }, [])
 
-  const applyRectangleUpdate = useCallback((incoming: CanvasRectangle) => {
-    if (incoming.canvasId !== ACTIVE_CANVAS_ID) {
-      debugLog('Ignoring update for foreign canvas', incoming)
-      return
-    }
-    setRectangles((current) => {
-      const index = current.findIndex((item) => item.id === incoming.id)
-      if (index === -1) {
-        debugLog('Adding rectangle from payload', incoming)
-        return sortRectangles([...current, incoming])
-      }
-      const existing = current[index]
-      const incomingTimestamp = timestampOrZero(incoming.updatedAt)
-      const existingTimestamp = timestampOrZero(existing.updatedAt)
-      if (incomingTimestamp < existingTimestamp) {
-        debugLog('Skipping stale rectangle update', {
-          incoming,
-          incomingTimestamp,
-          existingTimestamp,
-        })
-        return current
-      }
-      debugLog('Applying rectangle update', incoming)
-      const next = [...current]
-      next[index] = { ...existing, ...incoming }
-      return sortRectangles(next)
-    })
-  }, [])
-
-  const refreshRectangles = useCallback(async () => {
-    try {
-      debugLog('Requesting rectangles from database')
-      const rows = await loadRectangles()
-      if (!isMountedRef.current) {
-        return
-      }
-      const mapped = rows.map(mapRowToRectangle)
-      debugLog('Loaded rectangles from database', mapped)
-      setRectangles(sortRectangles(mapped))
-    } catch (error) {
-      debugLog('Failed to load rectangles', error)
-      console.error('Failed to load rectangles from Supabase', error)
-    }
-  }, [])
-
-  useEffect(() => {
-    void refreshRectangles()
-  }, [refreshRectangles])
-
-  useEffect(() => {
-    const computed = rectangles.length % RECT_COLORS.length
-    setColorIndex((current) => (current === computed ? current : computed))
-  }, [rectangles.length])
-
-  const clampRectanglePosition = useCallback(
-    (rectangle: CanvasRectangle, position: { x: number; y: number }) => ({
-      x: Math.max(0, Math.min(WORKSPACE_SIZE - rectangle.width, position.x)),
-      y: Math.max(0, Math.min(WORKSPACE_SIZE - rectangle.height, position.y)),
-    }),
-    [],
-  )
-  const commitRectanglePosition = useCallback(
-    (id: string, position: { x: number; y: number }) => {
-      let result:
-        | {
-            clamped: { x: number; y: number }
-            timestamp: string
-            canvasId: string
-          }
-        | undefined
-      setRectangles((current) =>
-        current.map((item) => {
-          if (item.id !== id) {
-            return item
-          }
-          const clamped = clampRectanglePosition(item, position)
-          const timestamp = new Date().toISOString()
-          const canvasId = item.canvasId ?? ACTIVE_CANVAS_ID
-          result = { clamped, timestamp, canvasId }
-          return {
-            ...item,
-            ...clamped,
-            updatedAt: new Date().toISOString(),
-          }
-        }),
-      )
-      if (result) {
-        debugLog('Committed rectangle position', { id, ...result })
-      } else {
-        debugLog('Commit skipped, rectangle not found', { id })
-      }
-      return result
-    },
-    [clampRectanglePosition],
-  )
-
-  const persistRectanglePosition = useCallback(
-    (
-      id: string,
-      position: { x: number; y: number },
-      timestamp: string,
-      canvasId: string,
-    ) => {
-      debugLog('Persisting rectangle position', {
-        id,
-        position,
-        timestamp,
-        canvasId,
-      })
-      void (async () => {
-        try {
-          const updated = await updateRectangleRecord(id, {
-            x: position.x,
-            y: position.y,
-            updatedAt: timestamp,
-            canvasId,
-          })
-          if (!isMountedRef.current) {
-            return
-          }
-          debugLog('Persisted rectangle update response', updated)
-          applyRectangleUpdate(mapRowToRectangle(updated))
-        } catch (error) {
-          console.error(`Failed to persist rectangle ${id}`, error)
-          if (isMountedRef.current) {
-            debugLog('Reloading rectangles after failed persist', { id, error })
-            void refreshRectangles()
-          }
-        }
-      })()
-    },
-    [applyRectangleUpdate, refreshRectangles],
-  )
-
-  const clampStagePosition = useCallback(
-    (next: { x: number; y: number }, nextScale = scale) => {
-      const bounds = computePanBounds(nextScale)
-      const clampedX = Math.max(bounds.minX, Math.min(bounds.maxX, next.x))
-      const clampedY = Math.max(bounds.minY, Math.min(bounds.maxY, next.y))
-      return { x: clampedX, y: clampedY }
-    },
-    [computePanBounds, scale],
-  )
-
-  useEffect(() => {
-    const handleResize = () => {
-      const container = containerRef.current
-      if (container) {
-        setViewportSize({
-          width: container.clientWidth,
-          height: container.clientHeight,
-        })
-      }
-    }
-
-    handleResize()
-    window.addEventListener('resize', handleResize)
-    return () => {
-      window.removeEventListener('resize', handleResize)
-    }
-  }, [])
-
-  useEffect(() => {
-    let cancelled = false
-    setIsLoadingRectangles(true)
-    setSyncError(null)
-
-    loadRectangles(canvasId)
-      .then((records) => {
-        if (cancelled) {
-          return
-        }
-        setRectangles(records.map(mapRecordToRectangle))
-      })
-      .catch((error: Error) => {
-        if (cancelled) {
-          return
-        }
-        setSyncError(error.message)
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setIsLoadingRectangles(false)
-        }
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [canvasId])
-
-  useEffect(() => {
-    if (!syncError) {
-      return
-    }
-    const timeoutId = window.setTimeout(() => {
-      setSyncError(null)
-    }, 5000)
-    return () => {
-      window.clearTimeout(timeoutId)
-    }
-  }, [syncError])
-
-  const handleInsertEvent = useCallback(
-    (payload: RealtimePostgresInsertPayload<RectangleRecord>) => {
-      const record = payload.new
-      if (!record) {
-        return
-      }
-      if (record.canvas_id !== canvasId) {
-        return
-      }
-      setRectangles((current) => {
-        const existing = current.find((item) => item.id === record.id)
-        const incoming = mapRecordToRectangle(record)
-        const incomingTs = parseTimestamp(incoming.updatedAt)
-
-        if (!existing) {
-          return [...current, incoming]
-        }
-
-        const existingTs = parseTimestamp(existing.updatedAt)
-        if (existingTs >= incomingTs) {
-          return current
-        }
-
-        return current.map((item) =>
-          item.id === record.id ? { ...incoming } : item,
-        )
-      })
-      setSyncError(null)
-    },
-    [canvasId],
-  )
-
-  const handleUpdateEvent = useCallback(
-    (payload: RealtimePostgresUpdatePayload<RectangleRecord>) => {
-      const record = payload.new
-      if (!record) {
-        return
-      }
-      if (record.canvas_id !== canvasId) {
-        return
-      }
-
-      setRectangles((current) => {
-        const index = current.findIndex((item) => item.id === record.id)
-        const incoming = mapRecordToRectangle(record)
-        const incomingTs = parseTimestamp(incoming.updatedAt)
-
-        if (index === -1) {
-          return [...current, incoming]
-        }
-
-        const existing = current[index]
-        const existingTs = parseTimestamp(existing.updatedAt)
-
-        if (existingTs >= incomingTs) {
-          return current
-        }
-
-        const next = [...current]
-        next[index] = incoming
-        return next
-      })
-
-      if (pendingUpdatesRef.current.has(record.id)) {
-        pendingUpdatesRef.current.delete(record.id)
-      }
-      setSyncError(null)
-    },
-    [canvasId],
-  )
-
-  useEffect(() => {
-    const channelName = `canvas-objects-realtime-${canvasId}`
-    const channel = supabase
-      .channel(channelName)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: realtimeSchema,
-          table: 'canvas_objects',
-          filter: `canvas_id=eq.${canvasId}`,
-        },
-        handleInsertEvent,
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: realtimeSchema,
-          table: 'canvas_objects',
-          filter: `canvas_id=eq.${canvasId}`,
-        },
-        handleUpdateEvent,
-      )
-
-    channel.subscribe((status) => {
-      if (status === 'SUBSCRIBED') {
-        setSyncError((current) =>
-          current && current.includes('Realtime') ? null : current,
-        )
-      }
-      if (status === 'CHANNEL_ERROR') {
-        setSyncError('Realtime connection error. Attempting to reconnect…')
-      }
-      if (status === 'CLOSED') {
-        setSyncError('Realtime connection closed. Attempting to reconnect…')
-      }
-    })
-
-    realtimeChannelRef.current = channel
-
-    return () => {
-      realtimeChannelRef.current = null
-      supabase.removeChannel(channel)
-    }
-  }, [canvasId, handleInsertEvent, handleUpdateEvent])
-
-  useEffect(() => {
-    setStagePosition((current) => clampStagePosition(current))
-  }, [clampStagePosition])
-
-  useEffect(() => {
-    const cancelPan = () => {
-      hasMovedRef.current = false
-      setIsPanning(false)
-    }
-    window.addEventListener('mouseup', cancelPan)
-    window.addEventListener('touchend', cancelPan)
-    window.addEventListener('touchcancel', cancelPan)
-    return () => {
-      window.removeEventListener('mouseup', cancelPan)
-      window.removeEventListener('touchend', cancelPan)
-      window.removeEventListener('touchcancel', cancelPan)
-    }
-  }, [])
+  const clampRectanglePosition = useCallback((
+    rectangle: CanvasRectangle,
+    position: { x: number; y: number },
+  ) => ({
+    x: Math.max(0, Math.min(WORKSPACE_SIZE - rectangle.width, position.x)),
+    y: Math.max(0, Math.min(WORKSPACE_SIZE - rectangle.height, position.y)),
+  }), [])
 
   const createRectangleAt = useCallback(
     (position: { x: number; y: number }) => {
@@ -497,8 +254,7 @@ export function Canvas({ canvasId }: CanvasProps) {
       )
 
       const color = RECT_COLORS[colorIndex]
-
-      const tempId = `temp-${generateRectangleId()}`
+      const tempId = `temp-${Math.random().toString(36).slice(2)}`
       const optimisticRectangle: CanvasRectangle = {
         id: tempId,
         x: clampedX,
@@ -512,9 +268,10 @@ export function Canvas({ canvasId }: CanvasProps) {
 
       setRectangles((current) => [...current, optimisticRectangle])
       setSelectedId(tempId)
+
       setColorIndex((index) => (index + 1) % RECT_COLORS.length)
 
-      void createRectangleRecord({
+      void createRectangle({
         x: clampedX,
         y: clampedY,
         width,
@@ -522,25 +279,52 @@ export function Canvas({ canvasId }: CanvasProps) {
         color,
         canvas_id: canvasId,
         created_by: user?.id ?? null,
+      }).then((record) => {
+        setRectangles((current) =>
+          current.map((item) =>
+            item.id === tempId
+              ? mapRecordToRectangle(record, canvasId)
+              : item,
+          ),
+        )
+        setSelectedId(record.id)
       })
-        .then((record) => {
-          setSyncError(null)
-          setRectangles((current) =>
-            current.map((item) =>
-              item.id === tempId ? mapRecordToRectangle(record) : item,
-            ),
-          )
-          setSelectedId(record.id)
-        })
-        .catch((error: Error) => {
-          setRectangles((current) =>
-            current.filter((item) => item.id !== tempId),
-          )
-          setSelectedId(null)
-          setSyncError(error.message)
-        })
     },
     [canvasId, colorIndex, user?.id],
+  )
+
+  const updateRectanglePosition = useCallback(
+    (id: string, position: { x: number; y: number }) => {
+      let clamped: { x: number; y: number } | undefined
+      setRectangles((current) =>
+        current.map((item) => {
+          if (item.id !== id) {
+            return item
+          }
+          clamped = clampRectanglePosition(item, position)
+          return {
+            ...item,
+            ...clamped,
+            updatedAt: new Date().toISOString(),
+          }
+        }),
+      )
+      return clamped
+    },
+    [clampRectanglePosition],
+  )
+
+  const persistRectanglePosition = useCallback(
+    (id: string, position: { x: number; y: number }) => {
+      void updateRectangle(id, {
+        id,
+        x: position.x,
+        y: position.y,
+        canvas_id: canvasId,
+        updated_at: new Date().toISOString(),
+      })
+    },
+    [canvasId],
   )
 
   const getClientCoordinates = (
@@ -720,72 +504,6 @@ export function Canvas({ canvasId }: CanvasProps) {
     [clampStagePosition, scale],
   )
 
-  useEffect(() => {
-    debugLog('Setting up realtime channel')
-    const channel = supabase
-      .channel('realtime-canvas-objects')
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'canvas_objects',
-        },
-        (payload: RealtimePostgresInsertPayload<CanvasObjectRow>) => {
-          const row = payload.new
-          if (!row || row.type !== 'rectangle') {
-            return
-          }
-          debugLog('Realtime INSERT received', row)
-          applyRectangleUpdate(mapRowToRectangle(row))
-        },
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'canvas_objects',
-        },
-        (payload: RealtimePostgresUpdatePayload<CanvasObjectRow>) => {
-          const row = payload.new
-          if (!row || row.type !== 'rectangle') {
-            return
-          }
-          debugLog('Realtime UPDATE received', row)
-          applyRectangleUpdate(mapRowToRectangle(row))
-        },
-      )
-      .subscribe((status, err) => {
-        if (status === 'SUBSCRIBED') {
-          debugLog('Realtime channel subscribed')
-          if (hadChannelErrorRef.current) {
-            hadChannelErrorRef.current = false
-            void refreshRectangles()
-          }
-        } else if (
-          status === 'CHANNEL_ERROR' ||
-          status === 'TIMED_OUT' ||
-          status === 'CLOSED'
-        ) {
-          debugLog('Realtime channel issue detected', { status, error: err })
-          hadChannelErrorRef.current = true
-        }
-        if (err) {
-          debugLog('Realtime channel error details', err)
-        }
-      })
-
-    channelRef.current = channel
-    debugLog('Realtime channel created', { topic: channel.topic })
-
-    return () => {
-      channelRef.current = null
-      debugLog('Realtime channel cleanup unsubscribing', { topic: channel.topic })
-      void channel.unsubscribe()
-    }
-  }, [applyRectangleUpdate, refreshRectangles])
-
   return (
     <div
       ref={containerRef}
@@ -823,68 +541,27 @@ export function Canvas({ canvasId }: CanvasProps) {
                 rectangle={rectangle}
                 isSelected={rectangle.id === selectedId}
                 onSelect={() => setSelectedId(rectangle.id)}
-                onDragMove={(event) => {
-                  const clamped = clampRectanglePosition(rectangle, {
+                onDragMove={(event) =>
+                  clampRectanglePosition(rectangle, {
                     x: event.target.x(),
                     y: event.target.y(),
                   })
                 }
                 onDragEnd={(event) => {
-                  const nextPosition = updateRectanglePosition(rectangle.id, {
+                  const clamped = updateRectanglePosition(rectangle.id, {
                     x: event.target.x(),
                     y: event.target.y(),
                   })
-                  if (
-                    nextPosition &&
-                    rectangle.id &&
-                    !rectangle.id.startsWith('temp-')
-                  ) {
-                    const pendingTimestamp = Date.now()
-                    pendingUpdatesRef.current.set(
-                      rectangle.id,
-                      pendingTimestamp,
-                    )
-                    void updateRectangleRecord(rectangle.id, {
-                      x: nextPosition.x,
-                      y: nextPosition.y,
-                      canvas_id: canvasId,
-                      updated_at: new Date().toISOString(),
-                    })
-                      .then((record) => {
-                        pendingUpdatesRef.current.delete(rectangle.id)
-                        setRectangles((current) =>
-                          current.map((item) =>
-                            item.id === record.id
-                              ? mapRecordToRectangle(record)
-                              : item,
-                          ),
-                        )
-                        setSyncError(null)
-                      })
-                      .catch((error: Error) => {
-                        pendingUpdatesRef.current.delete(rectangle.id)
-                        setSyncError(error.message)
-                      })
+                  if (clamped && !rectangle.id.startsWith('temp-')) {
+                    persistRectanglePosition(rectangle.id, clamped)
                   }
+                  return clamped
                 }}
               />
             ))}
           </Group>
         </Layer>
       </Stage>
-      {isLoadingRectangles ? (
-        <div className="canvas-overlay">
-          <div className="canvas-overlay__content">
-            <div className="canvas-overlay__spinner" aria-hidden />
-            <span>Loading rectangles…</span>
-          </div>
-        </div>
-      ) : null}
-      {syncError ? (
-        <div className="canvas-toast" role="status">
-          {syncError}
-        </div>
-      ) : null}
     </div>
   )
 }
