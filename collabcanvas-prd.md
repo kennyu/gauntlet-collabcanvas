@@ -31,7 +31,7 @@ Demonstrate production-ready real-time collaboration infrastructure that:
 ## User Stories
 
 ### Authentication & Access
-- **As a new user**, I want to sign in with Google or GitHub so I can start collaborating immediately
+- **As a new user**, I want to sign in with Google or standard login so I can start collaborating immediately
 - **As a returning user**, I want to stay logged in so I don't have to re-authenticate each session
 
 ### Canvas Operations
@@ -54,26 +54,23 @@ Demonstrate production-ready real-time collaboration infrastructure that:
 ## Feature Requirements
 
 ### FR-1: User Authentication
-**Priority:** P0 (Must Have)  
-**Status:** Required for MVP
 
 **Requirements:**
-- OAuth authentication with Google and GitHub providers
+- OAuth authentication with Google provider
+- Login or create a new user
 - Persistent sessions across browser restarts
 - Automatic redirect to canvas after successful auth
 - Display username/email from OAuth profile
 
 **Acceptance Criteria:**
 - [ ] User can sign in with Google OAuth
-- [ ] User can sign in with GitHub OAuth
+- [ ] User can create account and sign in
 - [ ] Session persists after page refresh
 - [ ] Username appears in presence panel after login
 
 ---
 
 ### FR-2: Canvas Workspace
-**Priority:** P0 (Must Have)  
-**Status:** Required for MVP
 
 **Requirements:**
 - Fixed canvas size: 3000x3000 pixels
@@ -92,8 +89,6 @@ Demonstrate production-ready real-time collaboration infrastructure that:
 ---
 
 ### FR-3: Rectangle Creation
-**Priority:** P0 (Must Have)  
-**Status:** Required for MVP
 
 **Requirements:**
 - Click anywhere on canvas to create rectangle
@@ -112,8 +107,6 @@ Demonstrate production-ready real-time collaboration infrastructure that:
 ---
 
 ### FR-4: Object Selection & Movement
-**Priority:** P0 (Must Have)  
-**Status:** Required for MVP
 
 **Requirements:**
 - Click rectangle to select (shows blue border)
@@ -131,8 +124,6 @@ Demonstrate production-ready real-time collaboration infrastructure that:
 ---
 
 ### FR-5: Real-Time Object Synchronization
-**Priority:** P0 (Must Have)  
-**Status:** Required for MVP
 
 **Requirements:**
 - All object creation events sync to all users
@@ -151,8 +142,6 @@ Demonstrate production-ready real-time collaboration infrastructure that:
 ---
 
 ### FR-6: Multiplayer Cursors
-**Priority:** P0 (Must Have)  
-**Status:** Required for MVP
 
 **Requirements:**
 - Show all remote users' cursor positions in real-time
@@ -173,8 +162,6 @@ Demonstrate production-ready real-time collaboration infrastructure that:
 ---
 
 ### FR-7: Presence Awareness Panel
-**Priority:** P0 (Must Have)  
-**Status:** Required for MVP
 
 **Requirements:**
 - Panel positioned top-left corner
@@ -194,27 +181,7 @@ Demonstrate production-ready real-time collaboration infrastructure that:
 
 ---
 
-### FR-8: FPS Counter
-**Priority:** P1 (Should Have)  
-**Status:** Required for MVP
-
-**Requirements:**
-- Display real-time FPS in top-right corner
-- Update every 1 second
-- Color coding: Green (55-60), Yellow (45-54), Red (<45)
-- Always visible during canvas usage
-
-**Acceptance Criteria:**
-- [ ] FPS counter visible in top-right
-- [ ] Updates every second
-- [ ] Color changes based on performance
-- [ ] Doesn't interfere with canvas
-
----
-
-### FR-9: State Persistence
-**Priority:** P0 (Must Have)  
-**Status:** Required for MVP
+### FR-8: State Persistence
 
 **Requirements:**
 - All rectangles saved to database immediately

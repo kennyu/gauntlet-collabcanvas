@@ -1,17 +1,21 @@
 import { Stage, Layer, Line, Group, Rect, Text } from 'react-konva'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
 import type { KonvaEventObject } from 'konva/lib/Node'
-import { getColorForUserId } from '../lib/colors'
+import { getColorForUserId, getRectangleColor, getNextColorIndex } from '../lib/colors'
 import { supabase } from '../lib/supabase'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import Cursor from './Cursor'
 import PresencePanel from './PresencePanel'
+import Rectangle from './Rectangle'
+import { useRectangles } from '../hooks/useRectangles'
+import { loadRectangles, createRectangle as dbCreateRectangle, updateRectangle as dbUpdateRectangle } from '../lib/database'
 
 const CANVAS_WIDTH = 3000
 const CANVAS_HEIGHT = 3000
 const GRID_SIZE = 50
-// rectangles removed; keep canvas bounds and grid only
+const MIN_RECT_SIZE = 20
+const DEFAULT_RECT_SIZE = 100
 
 
 function clamp(value: number, min: number, max: number) {
@@ -22,13 +26,32 @@ export default function Canvas() {
   const [stageSize] = useState(() => ({ width: window.innerWidth, height: window.innerHeight }))
   const [scale, setScale] = useState(1)
   const [stagePos, setStagePos] = useState({ x: 0, y: 0 })
+  const [currentColorIndex, setCurrentColorIndex] = useState(0)
   const [isPanning, setIsPanning] = useState(false)
+  const bgPointerDownRef = useRef(false)
+  // Stage panning is handled by Stage.draggable; no explicit isPanning flag
   const [remoteCursors, setRemoteCursors] = useState<Record<string, { x: number; y: number; color: string; label: string; ts: number }>>({})
   const [onlineUsers, setOnlineUsers] = useState<Record<string, { label: string; color: string }>>({})
   
+  const { rectangles, selectedId, addRectangle, selectRectangle, updateRectangle } = useRectangles()
+
   const log = (...args: unknown[]) => console.log('[Canvas]', ...args)
 
-  // rectangles removed: no initial load
+  // Initial load from Supabase
+  useEffect(() => {
+    ;(async () => {
+      try {
+        const items = await loadRectangles()
+        if (items.length) {
+          // hydrate rectangles into local state
+          // we reuse addRectangle to maintain shape; small batch insert
+          items.forEach((r) => addRectangle({ x: r.x, y: r.y, width: r.width, height: r.height, color: r.color }))
+        }
+      } catch (e) {
+        console.error('Failed to load rectangles', e)
+      }
+    })()
+  }, [addRectangle])
 
   // rectangles removed: no realtime object updates
 
@@ -244,7 +267,44 @@ export default function Canvas() {
     setStagePos(clampedPos)
   }
 
-  // rectangles removed: no background click create
+  const handleBackgroundClick = (e: KonvaEventObject<MouseEvent>) => {
+    const stage = e.target.getStage()
+    if (!stage) return
+
+    const pointer = stage.getPointerPosition()
+    if (!pointer) return
+
+    const rawX = (pointer.x - stagePos.x) / scale
+    const rawY = (pointer.y - stagePos.y) / scale
+
+    const width = Math.max(DEFAULT_RECT_SIZE, MIN_RECT_SIZE)
+    const height = Math.max(DEFAULT_RECT_SIZE, MIN_RECT_SIZE)
+
+    const x = Math.max(0, Math.min(rawX, CANVAS_WIDTH - width))
+    const y = Math.max(0, Math.min(rawY, CANVAS_HEIGHT - height))
+
+    const color = getRectangleColor(currentColorIndex)
+    setCurrentColorIndex((idx) => getNextColorIndex(idx))
+    const tempId = addRectangle({ x, y, width, height, color })
+    log('create rectangle (optimistic)', { tempId, x, y, width, height, color })
+    // Persist to DB and reconcile ID
+    ;(async () => {
+      try {
+        const { data } = await supabase.auth.getSession()
+        const userId = data.session?.user.id || ''
+        await dbCreateRectangle({ x, y, width, height, color }, userId)
+      } catch (err) {
+        console.error('Failed to persist rectangle', err)
+      }
+    })()
+  }
+
+  const handleRectClick = (id: string) => {
+    selectRectangle(id)
+    log('select rectangle', { id })
+  }
+
+  // dragBoundWithinCanvas removed; clamping applied on dragEnd
 
   // rectangles removed
 
@@ -264,7 +324,7 @@ export default function Canvas() {
         scaleX={scale}
         scaleY={scale}
         dragDistance={3}
-        draggable={isPanning && (hasHorizontalOverflow || hasVerticalOverflow)}
+        draggable={hasHorizontalOverflow || hasVerticalOverflow}
         dragBoundFunc={(pos) => ({
           x: clamp(pos.x, minX, maxX),
           y: clamp(pos.y, minY, maxY),
@@ -275,8 +335,24 @@ export default function Canvas() {
           log('stage drag move', { stagePos: { x: p.x, y: p.y } })
         }}
         onWheel={handleWheel}
-        onMouseUp={() => setIsPanning(false)}
+        onDragStart={(e) => {
+          // Only allow panning if drag started from background
+          if (!bgPointerDownRef.current) {
+            e.target.stopDrag()
+            return
+          }
+          setIsPanning(true)
+        }}
+        onDragEnd={() => {
+          setIsPanning(false)
+          bgPointerDownRef.current = false
+        }}
+        onMouseLeave={() => {
+          setIsPanning(false)
+          bgPointerDownRef.current = false
+        }}
       >
+        {/* Layer 1: background + grid (captures pan and clicks) */}
         <Layer width={layerSize.width} height={layerSize.height}>
           {/* Background rect to capture clicks on empty canvas */}
           <Rect
@@ -287,14 +363,16 @@ export default function Canvas() {
             fill={'#000'}
             opacity={0}
             onMouseDown={() => {
-              setIsPanning(true)
-              log('background mousedown → start panning')
+              bgPointerDownRef.current = true
+              selectRectangle(null)
+              log('background mousedown (armed for panning) + deselect')
             }}
             onMouseUp={() => {
-              setIsPanning(false)
-              log('background mouseup → stop panning')
+              bgPointerDownRef.current = false
             }}
-            // rectangles removed - click does nothing now
+            onClick={handleBackgroundClick}
+            // stop panning handled on Stage mouseup/leave
+            // click creates rectangle
           />
           <Group listening={false}>{gridLines}</Group>
           {/* Debug visuals: canvas bounds and viewport info */}
@@ -315,7 +393,64 @@ export default function Canvas() {
             fill="#64748b"
             listening={false}
           />
-          {/* rectangles removed */}
+        </Layer>
+        {/* Layer 2: shapes (above grid) */}
+        <Layer width={layerSize.width} height={layerSize.height}>
+          {rectangles.map((r) => (
+            <Rectangle
+              key={r.id}
+              x={r.x}
+              y={r.y}
+              width={r.width || DEFAULT_RECT_SIZE}
+              height={r.height || DEFAULT_RECT_SIZE}
+              color={r.color}
+              selected={selectedId === r.id}
+              draggable
+              onMouseDown={(e) => {
+                e.cancelBubble = true
+                bgPointerDownRef.current = false
+              }}
+              onDragStart={(e) => {
+                e.cancelBubble = true
+                const p = e.target.position()
+                log('rectangle drag start', { id: r.id, startPos: { x: p.x, y: p.y } })
+              }}
+              onDragMove={(e) => {
+                const node = e.target
+                const p = node.position()
+                const w = r.width || DEFAULT_RECT_SIZE
+                const h = r.height || DEFAULT_RECT_SIZE
+                const clampedX = Math.max(0, Math.min(p.x, CANVAS_WIDTH - Math.max(MIN_RECT_SIZE, w)))
+                const clampedY = Math.max(0, Math.min(p.y, CANVAS_HEIGHT - Math.max(MIN_RECT_SIZE, h)))
+                if (clampedX !== p.x || clampedY !== p.y) {
+                  node.position({ x: clampedX, y: clampedY })
+                }
+                updateRectangle(r.id, { x: clampedX, y: clampedY })
+                ;(async () => {
+                  try {
+                    await dbUpdateRectangle(r.id, { x: clampedX, y: clampedY })
+                  } catch (err) {
+                    console.error('Failed to persist rectangle move', err)
+                  }
+                })()
+                // live update prevents coordinate blow-up and keeps state in sync with visual
+              }}
+              onDragEnd={(e) => {
+                const node = e.target
+                const p = node.position()
+                const w = r.width || DEFAULT_RECT_SIZE
+                const h = r.height || DEFAULT_RECT_SIZE
+                const clampedX = Math.max(0, Math.min(p.x, CANVAS_WIDTH - Math.max(MIN_RECT_SIZE, w)))
+                const clampedY = Math.max(0, Math.min(p.y, CANVAS_HEIGHT - Math.max(MIN_RECT_SIZE, h)))
+                if (clampedX !== p.x || clampedY !== p.y) {
+                  node.position({ x: clampedX, y: clampedY })
+                }
+                updateRectangle(r.id, { x: clampedX, y: clampedY })
+                log('rectangle drag end', { id: r.id, x: clampedX, y: clampedY })
+              }}
+              onClick={() => handleRectClick(r.id)}
+            />
+          ))}
         </Layer>
       </Stage>
       {/* Remote Cursors overlay */}

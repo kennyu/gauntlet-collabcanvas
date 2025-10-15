@@ -4,8 +4,9 @@ export type RectangleState = {
   id: string
   x: number
   y: number
-  width: number
-  height: number
+  radius?: number
+  width?: number
+  height?: number
   color: string
 }
 
