@@ -229,54 +229,54 @@
   - **Validation:** Correct component shows based on auth state
 
 ### 3.2 Database Integration (FR-9)
-- [ ] **Task 3.2.1:** Create database operations module
+- [x] **Task 3.2.1:** Create database operations module
   - Create `src/lib/database.ts`
   - Implement `createRectangle()` function
   - Implement `updateRectangle()` function
   - Implement `loadRectangles()` function
   - **Validation:** Functions execute without errors
 
-- [ ] **Task 3.2.2:** Integrate create operations
+- [x] **Task 3.2.2:** Integrate create operations
   - Call `createRectangle()` when user creates rectangle
   - Pass user ID from auth context
   - Handle success/error responses
   - **Validation:** Rectangles saved to database
 
-- [ ] **Task 3.2.3:** Integrate update operations
+- [x] **Task 3.2.3:** Integrate update operations
   - Call `updateRectangle()` when user moves rectangle
   - Debounce updates to avoid excessive writes
   - **Validation:** Position updates saved to database
 
-- [ ] **Task 3.2.4:** Implement initial state load
+- [x] **Task 3.2.4:** Implement initial state load
   - Load all rectangles on component mount
   - Populate local state with database data
   - **Validation:** Existing rectangles load on page refresh
 
 ### 3.3 Real-Time Synchronization (FR-5)
-- [ ] **Task 3.3.1:** Subscribe to INSERT events
+- [x] **Task 3.3.1:** Subscribe to INSERT events
   - Set up Supabase Realtime subscription
   - Listen for INSERT on `canvas_objects`
   - Add new rectangles to local state
   - **Validation:** User A creates, User B sees new rectangle
 
-- [ ] **Task 3.3.2:** Subscribe to UPDATE events
+- [x] **Task 3.3.2:** Subscribe to UPDATE events
   - Listen for UPDATE on `canvas_objects`
   - Update matching rectangle in local state
   - **Validation:** User A moves, User B sees movement
 
-- [ ] **Task 3.3.3:** Implement conflict resolution
+- [x] **Task 3.3.3:** Implement conflict resolution
   - Use last-write-wins strategy
   - Always apply latest update from database
   - Don't merge conflicting changes
   - **Validation:** Concurrent edits resolve consistently
 
-- [ ] **Task 3.3.4:** Add reconnection logic
+- [x] **Task 3.3.4:** Add reconnection logic
   - Detect connection drops
   - Auto-reconnect when connection restored
   - Reload state after reconnection
   - **Validation:** Recovers from network interruption
 
-- [ ] **Task 3.3.5:** Optimize sync performance
+- [x] **Task 3.3.5:** Optimize sync performance
   - Batch updates where possible
   - Debounce high-frequency updates (drag)
   - Target <100ms propagation latency

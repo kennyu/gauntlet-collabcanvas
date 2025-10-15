@@ -8,6 +8,10 @@ export type CanvasRectangle = {
   width: number
   height: number
   color: string
+  createdAt: string | null
+  updatedAt: string | null
+  createdBy: string | null
+  canvasId: string
 }
 
 type RectangleProps = {
