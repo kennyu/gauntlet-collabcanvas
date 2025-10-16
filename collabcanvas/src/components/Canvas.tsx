@@ -1,12 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Group, Layer, Line, Rect, Stage } from 'react-konva'
-import type { RealtimeChannel, User } from '@supabase/supabase-js'
+import type {
+  RealtimeChannel,
+  RealtimePostgresChangesPayload,
+  User,
+} from '@supabase/supabase-js'
 import type { KonvaEventObject } from 'konva/lib/Node'
 import type { Stage as KonvaStage } from 'konva/lib/Stage'
 import { Rectangle, type CanvasRectangle } from './Rectangle'
 import { useAuth } from '../contexts/AuthContext'
 import {
   createRectangle,
+  deleteRectangle as deleteRectangleRecord,
   loadRectangles,
   updateRectangle,
   type RectangleRecord,
@@ -133,67 +138,97 @@ export function Canvas({ canvasId }: CanvasProps) {
   useEffect(() => {
     const channel = supabase.channel(`canvas:${canvasId}:objects`)
 
-    channel.on(
-      'postgres_changes',
-      {
-        event: '*',
-        schema: 'public',
-        table: 'canvas_objects',
-        filter: `canvas_id=eq.${canvasId}`,
-      },
-      (payload) => {
-        const eventType = payload.eventType
-        log('Realtime change received', eventType, {
-          new: payload.new,
-          old: payload.old,
-        })
+    const handleRecordUpsert = (record: RectangleRecord | undefined) => {
+      if (!record) {
+        log('Change payload missing record')
+        return
+      }
 
-        if (eventType === 'DELETE') {
-          const record = payload.old as RectangleRecord | undefined
-          if (!record?.id) {
-            log('Delete payload missing record id')
-            return
-          }
-          setRectangles((current) =>
-            current.filter((item) => item.id !== record.id),
-          )
-          return
-        }
-
-        const record = payload.new as RectangleRecord | undefined
-        if (!record) {
-          log('Change payload missing record')
-          return
-        }
-
-        const incoming = mapRecordToRectangle(record, canvasId)
-        setRectangles((current) => {
-          const existingIndex = current.findIndex((item) => item.id === incoming.id)
-          if (existingIndex === -1) {
-            return [...current, incoming].sort(
-              (a, b) => parseTimestamp(a.updatedAt) - parseTimestamp(b.updatedAt),
-            )
-          }
-
-          const existing = current[existingIndex]
-          const existingTs = parseTimestamp(existing.updatedAt)
-          const incomingTs = parseTimestamp(incoming.updatedAt)
-          if (incomingTs < existingTs) {
-            log('Ignoring stale change', {
-              id: incoming.id,
-              existingTs,
-              incomingTs,
-            })
-            return current
-          }
-          const next = [...current]
-          next[existingIndex] = incoming
-          return next.sort(
+      const incoming = mapRecordToRectangle(record, canvasId)
+      setRectangles((current) => {
+        const existingIndex = current.findIndex((item) => item.id === incoming.id)
+        if (existingIndex === -1) {
+          return [...current, incoming].sort(
             (a, b) => parseTimestamp(a.updatedAt) - parseTimestamp(b.updatedAt),
           )
-        })
-      },
-    )
+        }
+
+        const existing = current[existingIndex]
+        const existingTs = parseTimestamp(existing.updatedAt)
+        const incomingTs = parseTimestamp(incoming.updatedAt)
+        if (incomingTs < existingTs) {
+          log('Ignoring stale change', {
+            id: incoming.id,
+            existingTs,
+            incomingTs,
+          })
+          return current
+        }
+        const next = [...current]
+        next[existingIndex] = incoming
+        return next.sort(
+          (a, b) => parseTimestamp(a.updatedAt) - parseTimestamp(b.updatedAt),
+        )
+      })
+    }
+
+    const handleRealtimeChange = (
+      payload: RealtimePostgresChangesPayload<RectangleRecord>,
+    ) => {
+      const eventType = payload.eventType
+      log('Realtime change received', eventType, {
+        new: payload.new,
+        old: payload.old,
+      })
+
+      if (eventType === 'DELETE') {
+        const record = payload.old
+        if (!record?.id) {
+          log('Delete payload missing record id')
+          return
+        }
+        setRectangles((current) =>
+          current.filter((item) => item.id !== record.id),
+        )
+        return
+      }
+
+      handleRecordUpsert(payload.new)
+    }
+
+    const handleBroadcast = (payload: { event: string; payload: unknown }) => {
+      const body = payload.payload as { record?: RectangleRecord | null }
+      if (payload.event === 'DELETE') {
+        const record = body?.record
+        if (!record?.id) {
+          log('Broadcast DELETE missing id')
+          return
+        }
+        log('Broadcast delete received', record.id)
+        setRectangles((current) =>
+          current.filter((item) => item.id !== record.id),
+        )
+        return
+      }
+
+      log('Broadcast upsert received', payload.event, body)
+      handleRecordUpsert(body?.record ?? undefined)
+    }
+
+    channel
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'canvas_objects',
+          filter: `canvas_id=eq.${canvasId}`,
+        },
+        handleRealtimeChange,
+      )
+      .on('broadcast', { event: 'INSERT' }, handleBroadcast)
+      .on('broadcast', { event: 'UPDATE' }, handleBroadcast)
+      .on('broadcast', { event: 'DELETE' }, handleBroadcast)
 
     channel.subscribe((status) => {
       log('Realtime channel status', status)
@@ -318,11 +353,21 @@ export function Canvas({ canvasId }: CanvasProps) {
       log('Collab channel status', status)
       if (status === 'SUBSCRIBED') {
         channelReadyRef.current = true
-        void channel.track({
-          userId: user.id,
-          name: displayName,
-          color: localCursorColor,
-        })
+        void channel
+          .track({
+            userId: user.id,
+            name: displayName,
+            color: localCursorColor,
+          })
+          .then((response) => {
+            if (response !== 'ok') {
+              log('Presence track response', response)
+            }
+            syncPresenceState()
+          })
+          .catch((error) => {
+            log('Presence track error', error)
+          })
       }
       if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
         channelReadyRef.current = false
@@ -551,16 +596,85 @@ export function Canvas({ canvasId }: CanvasProps) {
   )
 
   const persistRectanglePosition = useCallback(
-    (id: string, position: { x: number; y: number }) => {
-      void updateRectangle(id, {
-        id,
-        x: position.x,
-        y: position.y,
-        canvas_id: canvasId,
-        updated_at: new Date().toISOString(),
-      })
+    async (
+      id: string,
+      position: { x: number; y: number },
+      previous: { x: number; y: number },
+    ) => {
+      try {
+        const record = await updateRectangle(id, {
+          id,
+          x: position.x,
+          y: position.y,
+          canvas_id: canvasId,
+          updated_at: new Date().toISOString(),
+        })
+        if (!record) {
+          throw new Error('Rectangle update returned no data')
+        }
+      } catch (error) {
+        log('Failed to persist rectangle position', error)
+        setRectangles((current) =>
+          current.map((item) =>
+            item.id === id
+              ? {
+                  ...item,
+                  x: previous.x,
+                  y: previous.y,
+                  updatedAt: new Date().toISOString(),
+                }
+              : item,
+          ),
+        )
+      }
     },
     [canvasId],
+  )
+
+  const deleteRectangleById = useCallback(
+    async (id: string) => {
+      if (id.startsWith('temp-')) {
+        setRectangles((current) => current.filter((item) => item.id !== id))
+        if (selectedId === id) {
+          setSelectedId(null)
+        }
+        return
+      }
+
+      const wasSelected = selectedId === id
+      let snapshot: CanvasRectangle[] = []
+      let removed = false
+      setRectangles((current) => {
+        snapshot = current
+        const next = current.filter((item) => item.id !== id)
+        if (next.length !== current.length) {
+          removed = true
+        }
+        return next
+      })
+
+      if (selectedId === id) {
+        setSelectedId(null)
+      }
+
+      if (!removed) {
+        return
+      }
+
+      try {
+        const result = await deleteRectangleRecord(id)
+        if (!result) {
+          throw new Error('Rectangle delete returned no data')
+        }
+      } catch (error) {
+        log('Failed to delete rectangle', error)
+        setRectangles(snapshot)
+        if (wasSelected) {
+          setSelectedId(id)
+        }
+      }
+    },
+    [selectedId],
   )
 
   const remoteCursorPositions = useMemo(() => {
@@ -915,6 +1029,9 @@ export function Canvas({ canvasId }: CanvasProps) {
                 rectangle={rectangle}
                 isSelected={rectangle.id === selectedId}
                 onSelect={() => setSelectedId(rectangle.id)}
+                onDelete={() => {
+                  void deleteRectangleById(rectangle.id)
+                }}
                 onDragMove={(event) =>
                   clampRectanglePosition(rectangle, {
                     x: event.target.x(),
@@ -922,12 +1039,13 @@ export function Canvas({ canvasId }: CanvasProps) {
                   })
                 }
                 onDragEnd={(event) => {
+                  const previous = { x: rectangle.x, y: rectangle.y }
                   const clamped = updateRectanglePosition(rectangle.id, {
                     x: event.target.x(),
                     y: event.target.y(),
                   })
                   if (clamped && !rectangle.id.startsWith('temp-')) {
-                    persistRectanglePosition(rectangle.id, clamped)
+                    void persistRectanglePosition(rectangle.id, clamped, previous)
                   }
                   return clamped
                 }}

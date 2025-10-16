@@ -4,6 +4,7 @@ import { supabase } from './supabase'
 type RectangleRow = Database['public']['Tables']['canvas_objects']['Row']
 type RectangleInsert = Database['public']['Tables']['canvas_objects']['Insert']
 type RectangleUpdate = Database['public']['Tables']['canvas_objects']['Update']
+type RectangleDelete = Database['public']['Tables']['canvas_objects']['Row']['id']
 type CanvasRow = Database['public']['Tables']['canvases']['Row']
 
 export type RectangleRecord = RectangleRow
@@ -74,7 +75,7 @@ export async function createRectangle(
 export async function updateRectangle(
   id: RectangleUpdate['id'],
   rectangle: RectangleUpdate,
-): Promise<RectangleRecord> {
+): Promise<RectangleRecord | null> {
   if (!id) {
     throw new Error('Rectangle id required for update')
   }
@@ -84,11 +85,32 @@ export async function updateRectangle(
     .update(rectangle)
     .eq('id', id)
     .select()
-    .single()
+    .maybeSingle()
 
   if (error) {
     throw error
   }
 
-  return data
+  return data ?? null
+}
+
+export async function deleteRectangle(
+  id: RectangleDelete,
+): Promise<RectangleRecord | null> {
+  if (!id) {
+    throw new Error('Rectangle id required for deletion')
+  }
+
+  const { data, error } = await supabase
+    .from('canvas_objects')
+    .delete()
+    .eq('id', id)
+    .select()
+    .maybeSingle()
+
+  if (error) {
+    throw error
+  }
+
+  return data ?? null
 }

@@ -1,25 +1,62 @@
-import { useState } from 'react'
+import { type FormEvent, useState } from 'react'
 import { supabase } from '../lib/supabase'
 
 export function Auth() {
-  const [loadingProvider, setLoadingProvider] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [infoMessage, setInfoMessage] = useState<string | null>(null)
+  const [mode, setMode] = useState<'signIn' | 'signUp'>('signIn')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [submitting, setSubmitting] = useState(false)
   const redirectTo =
     typeof window !== 'undefined' ? window.location.origin : undefined
 
-  const handleSignIn = async (provider: 'google' | 'github') => {
+  const toggleMode = () => {
+    setMode((current) => (current === 'signIn' ? 'signUp' : 'signIn'))
     setErrorMessage(null)
-    setLoadingProvider(provider)
+    setInfoMessage(null)
+    setPassword('')
+    setConfirmPassword('')
+  }
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (submitting) {
+      return
+    }
+    setErrorMessage(null)
+    setInfoMessage(null)
+
+    if (mode === 'signUp' && password !== confirmPassword) {
+      setErrorMessage('Passwords do not match.')
+      return
+    }
+
+    setSubmitting(true)
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider,
-        options: {
-          redirectTo,
-          skipBrowserRedirect: false,
-        },
-      })
-      if (error) {
-        throw error
+      if (mode === 'signIn') {
+        const { error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        })
+        if (error) {
+          throw error
+        }
+      } else {
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: redirectTo
+            ? { emailRedirectTo: redirectTo }
+            : undefined,
+        })
+        if (error) {
+          throw error
+        }
+        if (!data.session) {
+          setInfoMessage('Check your inbox to confirm your email before signing in.')
+        }
       }
     } catch (error) {
       if (error instanceof Error) {
@@ -27,7 +64,8 @@ export function Auth() {
       } else {
         setErrorMessage('Something went wrong while signing in.')
       }
-      setLoadingProvider(null)
+    } finally {
+      setSubmitting(false)
     }
   }
 
@@ -38,24 +76,78 @@ export function Auth() {
           <h1>CollabCanvas</h1>
           <p>Sign in to collaborate in real time.</p>
         </div>
-        <div className="auth-card__buttons">
+        <div className="auth-card__form-wrapper">
+          <h2 className="auth-card__form-title">
+            {mode === 'signIn' ? 'Sign in with email' : 'Create an account'}
+          </h2>
+          <form className="auth-card__form" onSubmit={handleSubmit}>
+            <label className="auth-card__field">
+              <span>Email</span>
+              <input
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                required
+                autoComplete={mode === 'signUp' ? 'email' : 'username'}
+                disabled={submitting}
+              />
+            </label>
+            <label className="auth-card__field">
+              <span>Password</span>
+              <input
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                required
+                minLength={6}
+                autoComplete={mode === 'signUp' ? 'new-password' : 'current-password'}
+                disabled={submitting}
+              />
+            </label>
+            {mode === 'signUp' ? (
+              <label className="auth-card__field">
+                <span>Confirm password</span>
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(event) => setConfirmPassword(event.target.value)}
+                  required
+                  minLength={6}
+                  autoComplete="new-password"
+                  disabled={submitting}
+                />
+              </label>
+            ) : null}
+            <button
+              type="submit"
+              className="auth-card__submit"
+              disabled={submitting}
+            >
+              {submitting
+                ? mode === 'signIn'
+                  ? 'Signing in...'
+                  : 'Creating account...'
+                : mode === 'signIn'
+                  ? 'Sign in'
+                  : 'Sign up'}
+            </button>
+          </form>
           <button
             type="button"
-            className="auth-card__button auth-card__button--google"
-            onClick={() => handleSignIn('google')}
-            disabled={loadingProvider !== null}
+            className="auth-card__toggle"
+            onClick={toggleMode}
+            disabled={submitting}
           >
-            {loadingProvider === 'google' ? 'Redirecting…' : 'Continue with Google'}
-          </button>
-          <button
-            type="button"
-            className="auth-card__button auth-card__button--github"
-            onClick={() => handleSignIn('github')}
-            disabled={loadingProvider !== null}
-          >
-            {loadingProvider === 'github' ? 'Redirecting…' : 'Continue with GitHub'}
+            {mode === 'signIn'
+              ? "Need an account? Sign up instead."
+              : 'Have an account? Sign in instead.'}
           </button>
         </div>
+        {infoMessage ? (
+          <p role="status" className="auth-card__info">
+            {infoMessage}
+          </p>
+        ) : null}
         {errorMessage ? (
           <p role="alert" className="auth-card__error">
             {errorMessage}

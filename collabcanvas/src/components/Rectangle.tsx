@@ -1,5 +1,5 @@
 import type { KonvaEventObject } from 'konva/lib/Node'
-import { Rect } from 'react-konva'
+import { Group, Rect, Text } from 'react-konva'
 
 export type CanvasRectangle = {
   id: string
@@ -16,6 +16,7 @@ type RectangleProps = {
   rectangle: CanvasRectangle
   isSelected: boolean
   onSelect: () => void
+  onDelete: () => void
   onDragMove: (
     event: KonvaEventObject<DragEvent>
   ) => { x: number; y: number } | void
@@ -28,23 +29,16 @@ export function Rectangle({
   rectangle,
   isSelected,
   onSelect,
+  onDelete,
   onDragMove,
   onDragEnd,
 }: RectangleProps) {
+  const deleteButtonSize = 24
+
   return (
-    <Rect
+    <Group
       x={rectangle.x}
       y={rectangle.y}
-      width={rectangle.width}
-      height={rectangle.height}
-      fill={rectangle.color}
-      stroke={isSelected ? '#2563eb' : undefined}
-      strokeWidth={
-        isSelected
-          ? 2 /
-            (typeof window !== 'undefined' ? window.devicePixelRatio : 1)
-          : undefined
-      }
       draggable
       onMouseDown={(event) => {
         event.cancelBubble = true
@@ -89,9 +83,67 @@ export function Rectangle({
           event.cancelBubble = true
         }
       }}
-      cornerRadius={6}
-      shadowForStrokeEnabled={false}
-      perfectDrawEnabled={false}
-    />
+    >
+      <Rect
+        width={rectangle.width}
+        height={rectangle.height}
+        fill={rectangle.color}
+        stroke={isSelected ? '#2563eb' : undefined}
+        strokeWidth={
+          isSelected
+            ? 2 /
+              (typeof window !== 'undefined' ? window.devicePixelRatio : 1)
+            : undefined
+        }
+        cornerRadius={6}
+        shadowForStrokeEnabled={false}
+        perfectDrawEnabled={false}
+      />
+      {isSelected ? (
+        <Group
+          x={rectangle.width}
+          y={0}
+          listening
+          onMouseDown={(event) => {
+            event.cancelBubble = true
+          }}
+          onTouchStart={(event) => {
+            event.cancelBubble = true
+          }}
+          onClick={(event) => {
+            event.cancelBubble = true
+            onDelete()
+          }}
+          onTap={(event) => {
+            event.cancelBubble = true
+            onDelete()
+          }}
+        >
+          <Rect
+            x={-deleteButtonSize / 2}
+            y={-deleteButtonSize / 2}
+            width={deleteButtonSize}
+            height={deleteButtonSize}
+            cornerRadius={deleteButtonSize / 2}
+            fill="rgba(15, 23, 42, 0.9)"
+            shadowForStrokeEnabled={false}
+            perfectDrawEnabled={false}
+          />
+          <Text
+            text="×"
+            x={-deleteButtonSize / 2}
+            y={-deleteButtonSize / 2 + 1}
+            width={deleteButtonSize}
+            height={deleteButtonSize}
+            align="center"
+            verticalAlign="middle"
+            fill="#f8fafc"
+            fontSize={deleteButtonSize * 0.7}
+            fontStyle="bold"
+            listening={false}
+          />
+        </Group>
+      ) : null}
+    </Group>
   )
 }
