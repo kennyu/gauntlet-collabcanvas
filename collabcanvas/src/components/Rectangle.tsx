@@ -17,6 +17,9 @@ type RectangleProps = {
   isSelected: boolean
   onSelect: () => void
   onDelete: () => void
+  onDragStart?: (
+    event: KonvaEventObject<DragEvent>
+  ) => void
   onDragMove: (
     event: KonvaEventObject<DragEvent>
   ) => { x: number; y: number } | void
@@ -30,6 +33,7 @@ export function Rectangle({
   isSelected,
   onSelect,
   onDelete,
+  onDragStart,
   onDragMove,
   onDragEnd,
 }: RectangleProps) {
@@ -71,6 +75,7 @@ export function Rectangle({
       onDragStart={(event) => {
         event.cancelBubble = true
         onSelect()
+        onDragStart?.(event)
       }}
       onMouseUp={(event) => {
         event.cancelBubble = true

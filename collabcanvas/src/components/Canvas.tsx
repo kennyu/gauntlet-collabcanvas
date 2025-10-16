@@ -117,6 +117,11 @@ export function Canvas({ canvasId }: CanvasProps) {
   const channelReadyRef = useRef(false)
   const lastCursorSentRef = useRef(0)
   const cursorVisibleRef = useRef(false)
+  const shapeChannelRef = useRef<RealtimeChannel | null>(null)
+  const shapeChannelReadyRef = useRef(false)
+  const draggingRectangleIdRef = useRef<string | null>(null)
+  const shapeTimestampsRef = useRef<Record<string, number>>({})
+  const lastShapeBroadcastRef = useRef<Record<string, number>>({})
 
   const displayName = useMemo(() => getUserDisplayName(user), [user])
   const localCursorColor = useMemo(
@@ -129,11 +134,117 @@ export function Canvas({ canvasId }: CanvasProps) {
       log('Loading rectangles from database', { canvasId })
       const records = await loadRectangles(canvasId)
       log('Loaded rectangles response', records.length)
-      setRectangles(records.map((record) => mapRecordToRectangle(record, canvasId)))
+      const mapped = records.map((record) =>
+        mapRecordToRectangle(record, canvasId),
+      )
+      setRectangles(mapped)
+      const timestampMap: Record<string, number> = {}
+      mapped.forEach((rectangle) => {
+        timestampMap[rectangle.id] = parseTimestamp(rectangle.updatedAt)
+      })
+      shapeTimestampsRef.current = timestampMap
     }
 
     void fetchRectangles()
   }, [canvasId])
+
+  const handleRemoteShapeMove = useCallback(
+    (payload: { payload: unknown }) => {
+      const data = payload.payload as {
+        id?: string
+        x?: number
+        y?: number
+        userId?: string
+        timestamp?: number
+        isFinal?: boolean
+      }
+      const rectangleId = data?.id
+      if (!rectangleId) {
+        return
+      }
+      if (typeof data.x !== 'number' || typeof data.y !== 'number') {
+        return
+      }
+      const nextX = data.x as number
+      const nextY = data.y as number
+      if (data.userId && data.userId === user?.id) {
+        return
+      }
+      if (draggingRectangleIdRef.current === rectangleId) {
+        return
+      }
+
+      const incomingTimestamp =
+        typeof data.timestamp === 'number' ? data.timestamp : 0
+
+      setRectangles((current) => {
+        const index = current.findIndex((item) => item.id === rectangleId)
+        if (index === -1) {
+          return current
+        }
+
+        const existing = current[index]
+        const tracked = shapeTimestampsRef.current[rectangleId] ?? 0
+        const existingTs = Math.max(
+          parseTimestamp(existing.updatedAt),
+          tracked,
+        )
+
+        if (incomingTimestamp && incomingTimestamp <= existingTs) {
+          log('Ignoring stale remote move', {
+            rectangleId,
+            existingTs,
+            incomingTimestamp,
+          })
+          return current
+        }
+
+        const appliedTimestamp =
+          incomingTimestamp > 0 ? incomingTimestamp : Date.now()
+
+        const next = [...current]
+        next[index] = {
+          ...existing,
+          x: nextX,
+          y: nextY,
+          updatedAt: new Date(appliedTimestamp).toISOString(),
+        }
+        shapeTimestampsRef.current[rectangleId] = appliedTimestamp
+        return next.sort(
+          (a, b) => parseTimestamp(a.updatedAt) - parseTimestamp(b.updatedAt),
+        )
+      })
+    },
+    [user?.id],
+  )
+
+  useEffect(() => {
+    const channel = supabase.channel(`canvas:${canvasId}:shape-sync`, {
+      config: {
+        broadcast: { self: true },
+      },
+    })
+
+    shapeChannelRef.current = channel
+    shapeChannelReadyRef.current = false
+    lastShapeBroadcastRef.current = {}
+
+    channel.on('broadcast', { event: 'move' }, handleRemoteShapeMove)
+
+    channel.subscribe((status) => {
+      log('Shape channel status', status, { canvasId })
+      shapeChannelReadyRef.current = status === 'SUBSCRIBED'
+    })
+
+    return () => {
+      log('Removing shape channel', { canvasId })
+      shapeChannelReadyRef.current = false
+      shapeChannelRef.current = null
+      lastShapeBroadcastRef.current = {}
+      draggingRectangleIdRef.current = null
+      supabase.removeChannel(channel)
+    }
+  }, [canvasId, handleRemoteShapeMove])
 
   useEffect(() => {
     const channel = supabase.channel(`canvas:${canvasId}:objects`)
@@ -148,15 +259,19 @@ export function Canvas({ canvasId }: CanvasProps) {
       setRectangles((current) => {
         const existingIndex = current.findIndex((item) => item.id === incoming.id)
         if (existingIndex === -1) {
+          shapeTimestampsRef.current[incoming.id] = parseTimestamp(
+            incoming.updatedAt,
+          )
           return [...current, incoming].sort(
             (a, b) => parseTimestamp(a.updatedAt) - parseTimestamp(b.updatedAt),
           )
         }
 
         const existing = current[existingIndex]
-        const existingTs = parseTimestamp(existing.updatedAt)
         const incomingTs = parseTimestamp(incoming.updatedAt)
-        if (incomingTs < existingTs) {
+        const trackedTs = shapeTimestampsRef.current[incoming.id] ?? 0
+        const existingTs = Math.max(parseTimestamp(existing.updatedAt), trackedTs)
+        if (incomingTs <= existingTs) {
           log('Ignoring stale change', {
             id: incoming.id,
             existingTs,
@@ -164,6 +279,7 @@ export function Canvas({ canvasId }: CanvasProps) {
           })
           return current
         }
+        shapeTimestampsRef.current[incoming.id] = incomingTs
         const next = [...current]
         next[existingIndex] = incoming
         return next.sort(
@@ -187,6 +303,7 @@ export function Canvas({ canvasId }: CanvasProps) {
           log('Delete payload missing record id')
           return
         }
+        delete shapeTimestampsRef.current[record.id]
         setRectangles((current) =>
           current.filter((item) => item.id !== record.id),
         )
@@ -548,6 +665,9 @@ export function Canvas({ canvasId }: CanvasProps) {
       }
 
       setRectangles((current) => [...current, optimisticRectangle])
+      shapeTimestampsRef.current[tempId] = parseTimestamp(
+        optimisticRectangle.updatedAt,
+      )
       setSelectedId(tempId)
 
       setColorIndex((index) => (index + 1) % RECT_COLORS.length)
@@ -561,13 +681,16 @@ export function Canvas({ canvasId }: CanvasProps) {
         canvas_id: canvasId,
         created_by: user?.id ?? null,
       }).then((record) => {
+        const mapped = mapRecordToRectangle(record, canvasId)
         setRectangles((current) =>
           current.map((item) =>
             item.id === tempId
-              ? mapRecordToRectangle(record, canvasId)
+              ? mapped
               : item,
           ),
         )
+        delete shapeTimestampsRef.current[tempId]
+        shapeTimestampsRef.current[mapped.id] = parseTimestamp(mapped.updatedAt)
         setSelectedId(record.id)
       })
     },
@@ -577,19 +700,25 @@ export function Canvas({ canvasId }: CanvasProps) {
   const updateRectanglePosition = useCallback(
     (id: string, position: { x: number; y: number }) => {
       let clamped: { x: number; y: number } | undefined
+      let timestamp: number | undefined
       setRectangles((current) =>
         current.map((item) => {
           if (item.id !== id) {
             return item
           }
           clamped = clampRectanglePosition(item, position)
+          const iso = new Date().toISOString()
+          timestamp = parseTimestamp(iso)
           return {
             ...item,
             ...clamped,
-            updatedAt: new Date().toISOString(),
+            updatedAt: iso,
           }
         }),
       )
+      if (clamped && timestamp !== undefined) {
+        shapeTimestampsRef.current[id] = timestamp
+      }
       return clamped
     },
     [clampRectanglePosition],
@@ -612,8 +741,15 @@ export function Canvas({ canvasId }: CanvasProps) {
         if (!record) {
           throw new Error('Rectangle update returned no data')
         }
+        const recordTimestamp = parseTimestamp(
+          record.updated_at ?? record.created_at,
+        )
+        if (recordTimestamp) {
+          shapeTimestampsRef.current[id] = recordTimestamp
+        }
       } catch (error) {
         log('Failed to persist rectangle position', error)
+        let revertTimestamp: number | undefined
         setRectangles((current) =>
           current.map((item) =>
             item.id === id
@@ -621,11 +757,18 @@ export function Canvas({ canvasId }: CanvasProps) {
                   ...item,
                   x: previous.x,
                   y: previous.y,
-                  updatedAt: new Date().toISOString(),
+                  updatedAt: (() => {
+                    const iso = new Date().toISOString()
+                    revertTimestamp = parseTimestamp(iso)
+                    return iso
+                  })(),
                 }
               : item,
           ),
         )
+        if (revertTimestamp !== undefined) {
+          shapeTimestampsRef.current[id] = revertTimestamp
+        }
       }
     },
     [canvasId],
@@ -635,6 +778,7 @@ export function Canvas({ canvasId }: CanvasProps) {
     async (id: string) => {
       if (id.startsWith('temp-')) {
         setRectangles((current) => current.filter((item) => item.id !== id))
+        delete shapeTimestampsRef.current[id]
         if (selectedId === id) {
           setSelectedId(null)
         }
@@ -644,11 +788,13 @@ export function Canvas({ canvasId }: CanvasProps) {
       const wasSelected = selectedId === id
       let snapshot: CanvasRectangle[] = []
       let removed = false
+      const previousTimestamp = shapeTimestampsRef.current[id]
       setRectangles((current) => {
         snapshot = current
         const next = current.filter((item) => item.id !== id)
         if (next.length !== current.length) {
           removed = true
+          delete shapeTimestampsRef.current[id]
         }
         return next
       })
@@ -669,12 +815,108 @@ export function Canvas({ canvasId }: CanvasProps) {
       } catch (error) {
         log('Failed to delete rectangle', error)
         setRectangles(snapshot)
+        if (previousTimestamp !== undefined) {
+          shapeTimestampsRef.current[id] = previousTimestamp
+        }
         if (wasSelected) {
           setSelectedId(id)
         }
       }
     },
     [selectedId],
+  )
+
+  const broadcastRectanglePosition = useCallback(
+    (
+      rectangleId: string,
+      position: { x: number; y: number },
+      options?: { isFinal?: boolean },
+    ) => {
+      const channel = shapeChannelRef.current
+      if (!channel || !shapeChannelReadyRef.current || !user?.id) {
+        return
+      }
+      const now = performance.now()
+      const lastSent = lastShapeBroadcastRef.current[rectangleId] ?? 0
+      const throttleMs = 1000 / 30
+      if (!options?.isFinal && now - lastSent < throttleMs) {
+        return
+      }
+      lastShapeBroadcastRef.current[rectangleId] = now
+      void channel
+        .send({
+          type: 'broadcast',
+          event: 'move',
+          payload: {
+            id: rectangleId,
+            x: position.x,
+            y: position.y,
+            userId: user.id,
+            timestamp: Date.now(),
+            isFinal: options?.isFinal ?? false,
+          },
+        })
+        .catch((error) => {
+          log('Failed to broadcast rectangle move', error)
+        })
+    },
+    [user?.id],
+  )
+
+  const handleRectangleDragStart = useCallback((rectangleId: string) => {
+    draggingRectangleIdRef.current = rectangleId
+    lastShapeBroadcastRef.current[rectangleId] = 0
+  }, [])
+
+  const handleRectangleDragMove = useCallback(
+    (rectangle: CanvasRectangle, event: KonvaEventObject<DragEvent>) => {
+      draggingRectangleIdRef.current = rectangle.id
+      const nextPosition = {
+        x: event.target.x(),
+        y: event.target.y(),
+      }
+      const clamped = clampRectanglePosition(rectangle, nextPosition)
+      const applied = updateRectanglePosition(rectangle.id, clamped)
+      if (!rectangle.id.startsWith('temp-')) {
+        broadcastRectanglePosition(rectangle.id, applied ?? clamped, {
+          isFinal: false,
+        })
+      }
+      return applied ?? clamped
+    },
+    [
+      broadcastRectanglePosition,
+      clampRectanglePosition,
+      updateRectanglePosition,
+    ],
+  )
+
+  const handleRectangleDragEnd = useCallback(
+    (rectangle: CanvasRectangle, event: KonvaEventObject<DragEvent>) => {
+      const previous = { x: rectangle.x, y: rectangle.y }
+      const nextPosition = {
+        x: event.target.x(),
+        y: event.target.y(),
+      }
+      const clamped = updateRectanglePosition(rectangle.id, nextPosition)
+      const applied = clamped ?? clampRectanglePosition(rectangle, nextPosition)
+
+      if (!rectangle.id.startsWith('temp-')) {
+        broadcastRectanglePosition(rectangle.id, applied, { isFinal: true })
+        void persistRectanglePosition(rectangle.id, applied, previous)
+      }
+
+      draggingRectangleIdRef.current = null
+      lastShapeBroadcastRef.current[rectangle.id] = 0
+
+      return applied
+    },
+    [
+      broadcastRectanglePosition,
+      clampRectanglePosition,
+      persistRectanglePosition,
+      updateRectanglePosition,
+    ],
   )
 
   const remoteCursorPositions = useMemo(() => {
@@ -1032,23 +1274,13 @@ export function Canvas({ canvasId }: CanvasProps) {
                 onDelete={() => {
                   void deleteRectangleById(rectangle.id)
                 }}
+                onDragStart={() => handleRectangleDragStart(rectangle.id)}
                 onDragMove={(event) =>
-                  clampRectanglePosition(rectangle, {
-                    x: event.target.x(),
-                    y: event.target.y(),
-                  })
+                  handleRectangleDragMove(rectangle, event)
                 }
-                onDragEnd={(event) => {
-                  const previous = { x: rectangle.x, y: rectangle.y }
-                  const clamped = updateRectanglePosition(rectangle.id, {
-                    x: event.target.x(),
-                    y: event.target.y(),
-                  })
-                  if (clamped && !rectangle.id.startsWith('temp-')) {
-                    void persistRectanglePosition(rectangle.id, clamped, previous)
-                  }
-                  return clamped
-                }}
+                onDragEnd={(event) =>
+                  handleRectangleDragEnd(rectangle, event)
+                }
               />
             ))}
           </Group>
